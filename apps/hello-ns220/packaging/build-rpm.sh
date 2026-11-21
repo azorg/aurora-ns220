@@ -9,7 +9,15 @@
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)          # apps/hello-ns220/packaging
 APP=$(cd "$HERE/.." && pwd)                  # apps/hello-ns220
-TOPDIR=${RPM_TOPDIR:-$HOME/rpmbuild}
+# По умолчанию собираем в /home/user/rpmbuild: на / (rootfs 2.3G) места мало,
+# а /home — 8.4G. Если /home нет, падаем на $HOME/rpmbuild.
+if [ -n "${RPM_TOPDIR:-}" ]; then
+    TOPDIR="$RPM_TOPDIR"
+elif [ -d /home/user ]; then
+    TOPDIR=/home/user/rpmbuild
+else
+    TOPDIR=$HOME/rpmbuild
+fi
 OUTDIR=${OUTDIR:-$APP/packaging}
 GPG_NAME=${GPG_NAME:-aurora-ns220@local}
 # Ключ подписи храним у пользователя (вне git): /home/user/.gnupg.
@@ -29,7 +37,16 @@ cp -f "$APP/hello-ns220" "$TOPDIR/SOURCES/hello-ns220"
 cp -f "$HERE/aurora-hello-ns220.desktop" "$TOPDIR/SOURCES/"
 cp -f "$HERE/aurora-hello-ns220.png" "$TOPDIR/SOURCES/"
 cp -f "$HERE/aurora-hello-ns220-86.png" "$TOPDIR/SOURCES/"
+cp -f "$APP/packaging/aurora-brightness.c" "$TOPDIR/SOURCES/"
+cp -f "$APP/packaging/sensor-reset.c" "$TOPDIR/SOURCES/"
 cp -f "$HERE/aurora-hello-ns220-launch.sh" "$TOPDIR/SOURCES/"
+
+# helper сенсоров: QtSensors -> sensorfw (нужен qt5-qtsensors-devel на устройстве)
+if [ -f "$APP/helper/sensor-reader.cpp" ]; then
+    echo "[*] собираю helper sensor-reader"
+    g++ -O2 -o "$TOPDIR/SOURCES/sensor-reader" "$APP/helper/sensor-reader.cpp" \
+        $(pkg-config --cflags --libs Qt5Sensors Qt5Core) || { echo "[!] helper не собрался" >&2; exit 1; }
+fi
 
 # 3. сборка
 echo "[*] rpmbuild (topdir=$TOPDIR)"

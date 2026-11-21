@@ -12,7 +12,7 @@
 
 Name:           aurora-hello-ns220
 Version:        1.0.0
-Release:        6%{?dist}
+Release:        14%{?dist}
 Summary:        Go+Fyne+OpenGL demo for Aurora OS on NS220 (MVK-2020)
 License:        MIT
 URL:            https://example.local/aurora-ns220
@@ -22,12 +22,17 @@ Source1:        aurora-hello-ns220.desktop
 Source2:        aurora-hello-ns220.png
 Source3:        aurora-hello-ns220-launch.sh
 Source4:        aurora-hello-ns220-86.png
+Source5:        sensor-reader
+Source6:        aurora-brightness.c
+Source7:        sensor-reset.c
 
 # Бинарник — динамически линкованный ELF (glibc, wayland, libhybris EGL).
 # Зависимости с soname rpm проставит сам (find-requires); явно — только то,
 # что не выражается в soname, но нужно на старте.
 Requires:       /usr/bin/env
 Requires:       pulseaudio
+Requires:       qt5-qtsensors
+Requires:       qt5-qtsensors-plugin-sensorfw
 
 %description
 Демонстрационное приложение «Hello world» для планшета NS220 (MVK-2020) под
@@ -39,11 +44,17 @@ Aurora OS: Go + Fyne + OpenGL (Mali-T720 через libhybris), анимация
 %prep
 
 %build
+gcc -O2 -o aurora-brightness %{SOURCE6}
+gcc -O2 -o aurora-sensor-reset %{SOURCE7}
 
 %install
 install -d %{buildroot}%{_bindir}
 install -m 0755 %{SOURCE0} %{buildroot}%{_bindir}/aurora-hello-ns220
 install -m 0755 %{SOURCE3} %{buildroot}%{_bindir}/aurora-hello-ns220-launch
+install -d %{buildroot}%{_libexecdir}/aurora-hello-ns220
+install -m 0755 %{SOURCE5} %{buildroot}%{_libexecdir}/aurora-hello-ns220/sensor-reader
+install -m 0755 aurora-brightness %{buildroot}%{_bindir}/aurora-brightness
+install -m 0755 aurora-sensor-reset %{buildroot}%{_bindir}/aurora-sensor-reset
 
 install -d %{buildroot}%{_datadir}/applications
 install -m 0644 %{SOURCE1} %{buildroot}%{_datadir}/applications/aurora-hello-ns220.desktop
@@ -71,11 +82,59 @@ command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database %{
 %files
 %{_bindir}/aurora-hello-ns220
 %{_bindir}/aurora-hello-ns220-launch
+%{_libexecdir}/aurora-hello-ns220/sensor-reader
+%attr(4755,root,root) %{_bindir}/aurora-brightness
+%attr(4755,root,root) %{_bindir}/aurora-sensor-reset
 %{_datadir}/applications/aurora-hello-ns220.desktop
 %{_datadir}/icons/hicolor/256x256/apps/aurora-hello-ns220.png
 %{_datadir}/themes/aurora-default/meegotouch/z1.0/icons/aurora-hello-ns220.png
 
 %changelog
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-14
+- Крупная тема панели: текст/кнопки/чекбоксы ~1.6x по тексту и 2x по отступам
+  (bigTheme), полоса микрофона 620x34, подписи панели 22pt. Карта кнопок:
+  POWER=116, VOLUMEUP=115, VOLUMEDOWN=114, BACK=158, UP=59, DOWN=60, HOME=102.
+
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-13
+- Кнопки/подсветка/сон/SIM: evdev-кнопки, яркость через setuid-хелпер, сон через
+  mce, модем/SIM/IMEI через ofono. -keepawake: приложение продлевает паузу
+  гашения экрана (при погашенном экране MTK HAL приостанавливает сенсоры, B045).
+
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-12
+- Кнопки (evdev), подсветка (setuid aurora-brightness 4755), сон/экран (mce),
+  модем/SIM/IMEI (ofono). 112: без SIM и регистрации недоступно (B048).
+- В пакет добавлены setuid-хелперы aurora-brightness и aurora-sensor-reset.
+
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-11
+- Ручной поворот сцены кнопками ⟲ 90° / ⟳ 90° / 0° (системный поворот в Aurora 4
+  на NS220 залочен вендором, B047); флаг -rot N для запуска с поворотом;
+  касания пересчитываются в координаты сцены.
+
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-10
+- FIX G-сенсора: helper печатал числа с запятой (локаль ru_RU) — «ACC 0,873 …»,
+  а Go-парсер ждал точку; теперь setlocale(LC_NUMERIC,"C") в helper и
+  нормализация запятой в парсере. На экране: x/y/z, |g|, тангаж/крен, компас,
+  положение (портрет/ландшафт/экраном вверх).
+
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-9
+- G-сенсор: если helper не даёт ACC за 5 с — перезапуск; после трёх неудач —
+  сброс sensorfwd через setuid `aurora-sensor-reset` (B043: D-Bus requestSensor
+  без releaseSensor оставляет сенсор активным).
+
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-8
+- G-сенсор/компас/ориентация: helper sensor-reader (QtSensors → sensorfw) в
+  %{_libexecdir}/aurora-hello-ns220/sensor-reader; приложение запускает его и
+  показывает ускорение, |g|, тангаж/крен, азимут и положение (QOrientationReading).
+  D-Bus requestSensor больше не используется (оставлял сенсор активным, B043).
+- Requires: qt5-qtsensors, qt5-qtsensors-plugin-sensorfw.
+
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-7
+- Кнопка «Выход» в панели (a.Quit), журнал жизненного цикла (WINDOW closed /
+  APP stopped / SIGNAL), корректный выход по SIGTERM/SIGINT.
+- Один экземпляр: сокет в $XDG_RUNTIME_DIR — повторный запуск просит первый
+  показать окно и выходит (раньше оставался невидимый процесс при закрытии
+  из Aurora, B040).
+
 * Sat Nov 21 2026 AI <ai@local> - 1.0.0-6
 - Виброклик: 25 мс мотор не успевал раскрутиться -> 60 мс (тап) и 90 мс
   (двойной), запись в журнал VIBRO (B036).

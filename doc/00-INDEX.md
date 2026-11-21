@@ -48,7 +48,8 @@ aurora-ns220/
 | 12 | [12-AUDIO.md](12-AUDIO.md) | звук: PulseAudio/Qt → C/C++ → Go |
 | 13 | [13-GLFW-V34-AND-WAYLAND119.md](13-GLFW-V34-AND-WAYLAND119.md) | GLFW v3.4 + libwayland 1.19: патч, протоколы, сборка |
 | 14 | [14-HARDWARE-ACCELERATION.md](14-HARDWARE-ACCELERATION.md) | аппаратное ускорение: Mali-T720, libhybris, замеры, адаптер |
-| 15 | [15-PERIPHERALS.md](15-PERIPHERALS.md) | периферия из Go: звук (libpulse), микрофон дБ, вибро, GPS (geoclue), G-сенсор (ограничение) |
+| 15 | [15-PERIPHERALS.md](15-PERIPHERALS.md) | периферия из Go: звук, микрофон дБ, вибро, GPS, G-сенсор, кнопки, подсветка, сон, модем |
+| 16 | [16-FINDINGS-NS220.md](16-FINDINGS-NS220.md) | **сводка находок по железу**: кнопки (POWER/vol/BACK/UP=59/DOWN=60/HOME, Reset), подсветка, сон, сенсоры, GPS, SIM |
 
 ## Материалы (doc/ai/)
 

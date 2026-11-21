@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Debian (chroot)
+Name[ru]=Debian (chroot)
+Comment=Debian 12 shell in chroot (mc, tmux, vim, htop, nmap)
+Comment[ru]=Shell Debian 12 в chroot (mc, tmux, vim, htop, nmap)
+Exec=/usr/bin/fingerterm -e /usr/local/bin/debian-chroot
+Icon=icon-launcher-shell
+Terminal=false
+Categories=System;TerminalEmulator;
+X-Nemo-Application-Type=no-invoker
+
+[X-Sailjail]
+Sandboxing=Disabled

@@ -9,7 +9,16 @@ set -e
 R=${DEBIAN_ROOT:-/home/chroot/debian}
 
 [ -d "$R" ] || { echo "нет rootfs: $R" >&2; exit 1; }
-[ "$(id -u)" = "0" ] || { echo "нужен root" >&2; exit 1; }
+
+# Не root — входим через setuid-хелпер (без пароля); если его нет — через devel-su.
+if [ "$(id -u)" != "0" ]; then
+    if [ -x /usr/local/bin/debian-enter ]; then
+        exec /usr/local/bin/debian-enter "$@"
+    fi
+    DEB_SU_PASS=${DEB_SU_PASS:-1234}
+    export DEB_SU_PASS
+    exec sh -c 'printf "%s\n" "$DEB_SU_PASS" | devel-su "$@"' _ "$0" "$@"
+fi
 
 # /home обычно noexec — иначе внутри ничего не запустится
 mount -o remount,exec /home 2>/dev/null || true

@@ -76,6 +76,7 @@ type board struct {
 
 	// HUD
 	// индикация прокрутки (двухпальцевый жест в GLFW -> Scrolled)
+	rot         int // поворот сцены: 0/90/180/270 (кнопками; системный залочен вендором)
 	scrollTotal float64
 	scrollPulse time.Time
 	scrollText  *canvas.Text
@@ -269,9 +270,10 @@ func (b *board) layout(size fyne.Size) {
 	}
 
 	// приветствие — по центру
-	b.greet.Move(fyne.NewPos(float32(w)*0.06, float32(h)*0.42))
+	gx, gy := b.rotPoint(float64(w)*0.5, float64(h)*0.42, float64(w), float64(h))
+	b.greet.Move(fyne.NewPos(float32(gx)-float32(w)*0.44, float32(gy)-30))
 	b.greet.Resize(fyne.NewSize(float32(w)*0.88, 60))
-	b.greetSub.Move(fyne.NewPos(float32(w)*0.06, float32(h)*0.42+64))
+	b.greetSub.Move(fyne.NewPos(float32(gx)-float32(w)*0.44, float32(gy)+34))
 	b.greetSub.Resize(fyne.NewSize(float32(w)*0.88, 30))
 }
 
@@ -329,8 +331,10 @@ func (b *board) frame(now time.Time) {
 		a := base + el*0.6
 		k := 0.55 + 0.45*math.Abs(math.Sin(a*0.8+float64(i)*0.2))
 		ln := R * k
-		l.Position1 = fyne.NewPos(float32(cx), float32(cy))
-		l.Position2 = fyne.NewPos(float32(cx+ln*math.Cos(a)), float32(cy+ln*math.Sin(a)))
+		sx1, sy1 := b.rotPoint(cx, cy, w, h)
+		sx2, sy2 := b.rotPoint(cx+ln*math.Cos(a), cy+ln*math.Sin(a), w, h)
+		l.Position1 = fyne.NewPos(float32(sx1), float32(sy1))
+		l.Position2 = fyne.NewPos(float32(sx2), float32(sy2))
 		g := uint8(90 + 130*(1-k))
 		l.StrokeColor = color.NRGBA{uint8(40 + g), 0x8f, 0xff, 0xff}
 	}
@@ -355,7 +359,8 @@ func (b *board) frame(now time.Time) {
 		if d.y > h-d.r {
 			d.y, d.vy = h-d.r, -math.Abs(d.vy)
 		}
-		d.obj.Move(fyne.NewPos(float32(d.x-d.r), float32(d.y-d.r)))
+		dx, dy := b.rotPoint(d.x, d.y, w, h)
+		d.obj.Move(fyne.NewPos(float32(dx-d.r), float32(dy-d.r)))
 	}
 
 	// след касаний (затухает по времени)
@@ -367,7 +372,8 @@ func (b *board) frame(now time.Time) {
 			if age < 1.4 {
 				al := uint8(200 * (1 - age/1.4))
 				c.FillColor = color.NRGBA{colTrail.R, colTrail.G, colTrail.B, al}
-				c.Move(fyne.NewPos(tp.pos.X-trailR, tp.pos.Y-trailR))
+				tx, ty := b.rotPoint(float64(tp.pos.X), float64(tp.pos.Y), w, h)
+				c.Move(fyne.NewPos(float32(tx-trailR), float32(ty-trailR)))
 			}
 		}
 	}
@@ -389,18 +395,20 @@ func (b *board) frame(now time.Time) {
 		al := uint8(220 * (1 - f))
 		rp.obj.FillColor = color.Transparent
 		rp.obj.StrokeColor = color.NRGBA{colRipple.R, colRipple.G, colRipple.B, al}
-		rp.obj.Move(fyne.NewPos(rp.at.X-rad, rp.at.Y-rad))
+		rx, ry := b.rotPoint(float64(rp.at.X), float64(rp.at.Y), w, h)
+		rp.obj.Move(fyne.NewPos(float32(rx)-rad, float32(ry)-rad))
 		rp.obj.Resize(fyne.NewSize(2*rad, 2*rad))
 	}
 
 	// перекрестие в последней точке касания
 	if b.hasTouch {
-		b.crossH.Position1 = fyne.NewPos(0, b.lastPos.Y)
-		b.crossH.Position2 = fyne.NewPos(float32(w), b.lastPos.Y)
-		b.crossV.Position1 = fyne.NewPos(b.lastPos.X, 0)
-		b.crossV.Position2 = fyne.NewPos(b.lastPos.X, float32(h))
+		lx, ly := b.rotPoint(float64(b.lastPos.X), float64(b.lastPos.Y), w, h)
+		b.crossH.Position1 = fyne.NewPos(0, float32(ly))
+		b.crossH.Position2 = fyne.NewPos(float32(w), float32(ly))
+		b.crossV.Position1 = fyne.NewPos(float32(lx), 0)
+		b.crossV.Position2 = fyne.NewPos(float32(lx), float32(h))
 		const ds = 14
-		b.dot.Move(fyne.NewPos(b.lastPos.X-ds, b.lastPos.Y-ds))
+		b.dot.Move(fyne.NewPos(float32(lx-ds), float32(ly-ds)))
 	}
 
 	// индикатор прокрутки: трек у правого края + «ползунок» + всплывающий текст
@@ -443,6 +451,7 @@ func (b *board) frame(now time.Time) {
 		counters[k] = v
 	}
 	lastEv := b.lastEv
+	rot := b.rot
 	scrollTotal := b.scrollTotal
 	lastPos := b.lastPos
 	hasTouch := b.hasTouch
@@ -466,6 +475,7 @@ func (b *board) frame(now time.Time) {
 		fmt.Sprintf("свайпы ←%d →%d ↑%d ↓%d · drag %d · скролл %d",
 			counters["swipe-left"], counters["swipe-right"], counters["swipe-up"], counters["swipe-down"],
 			counters["drag"], counters["scroll"]),
+		fmt.Sprintf("поворот сцены: %d° (кнопки ⟲/⟳/0°)", rot),
 		fmt.Sprintf("жест: %s · прокрутка всего: %.0f", orDash(lastEv), scrollTotal),
 	}
 	if hasTouch {
@@ -524,4 +534,53 @@ func orDash(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// --- поворот сцены «ручками» (кнопки в панели) -------------------------------
+//
+// Системный поворот в Aurora 4 на NS220 залочен вендором (dconf
+// screen_rotation_angle + locks), поэтому крутим содержимое сами.
+// Внутренние координаты сцены — «портретные» (w×h); при выводе применяем
+// поворот вокруг центра, а входящие касания переводим обратно.
+
+// rotPoint переводит точку сцены в экранные координаты с учётом b.rot.
+func (b *board) rotPoint(x, y, w, h float64) (float64, float64) {
+	cx, cy := w/2, h/2
+	dx, dy := x-cx, y-cy
+	switch b.rot {
+	case 90:
+		return cx - dy, cy + dx
+	case 180:
+		return cx - dx, cy - dy
+	case 270:
+		return cx + dy, cy - dx
+	}
+	return x, y
+}
+
+// unrotPoint — обратное преобразование (экран → сцена), для касаний.
+func (b *board) unrotPoint(x, y, w, h float64) (float64, float64) {
+	cx, cy := w/2, h/2
+	dx, dy := x-cx, y-cy
+	switch b.rot {
+	case 90:
+		return cx + dy, cy - dx
+	case 180:
+		return cx - dx, cy - dy
+	case 270:
+		return cx - dy, cy + dx
+	}
+	return x, y
+}
+
+// Rotate добавляет deg к повороту сцены (нормализует 0..270).
+func (b *board) Rotate(deg int) { b.SetRot(b.rot + deg) }
+
+// SetRot задаёт абсолютный поворот сцены (0/90/180/270).
+func (b *board) SetRot(v int) {
+	b.mu.Lock()
+	b.rot = ((v % 360) + 360) % 360
+	r := b.rot
+	b.mu.Unlock()
+	lg.Printf("ROT: сцена повёрнута на %d°", r)
 }

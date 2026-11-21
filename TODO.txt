@@ -21,7 +21,7 @@
 [x] Отключение проверки подписи исполняемых файлов (IMA): boot-imaoff-v4.img (cmdline: ima_appraise=off, module.sig_enforce=0); свои бинарники/скрипты/.so запускаются, Aurora работает — REPORT §19
 [x] IMA как опция при загрузке: scripts/boot-mode status|dev|secure|install — два образа в /boot-modes, dd через busybox (работает и в secure-режиме), recovery как второй канал; проверить на живом устройстве после каждого обновления — doc/10, план 0003
 [x] Восстановление окирпиченного устройства: MTK preloader/DA (CDC-pty bridge, handshake, mtkclient), проверено на реальном брике — REPORT §18, mtkrun.sh
-[~] Debian chroot (armhf, debootstrap --foreign, apt/nmap/mc/tmux/vim на планшете): рецепт готов (doc/11), развёрнуть и проверить — план 0004
+[x] Debian chroot развёрнут (Debian 12.15 armhf, bookworm): /home/chroot/debian, second-stage на устройстве, apt работает (sandbox+IPv4 фиксы), установлены mc/tmux/vim/htop/nmap/curl/ncdu; вход `debian-chroot`/`deb`, пункт меню «Debian (chroot)» (fingerterm). GUI внутри chroot недоступен — doc/11, packaging/debian-chroot
 
 ## Go + Fyne (среда разработки)
 
@@ -48,16 +48,24 @@
     пакет ru.vk.RuStore-1.7-3.armv7hl есть (static.rustore.ru/osaurora/rustore32.rpm), но требует
     GLIBC 2.32–2.34 (у нас 2.30), GLIBCXX 3.4.29/30 (у нас 3.4.25) и libmarket.so.0 (нет) — не грузится.
     Пакет удалён, RPM в ~/aurora-ns220/build/rustore/. Альтернатива — веб-версия в браузере.
-    Детали: doc/ai/plans/0017.plan-rustore.md
+    Детали: doc/ai/plans/0017.plan-rustore.md. Ярлык «RuStore (веб)» удалён (не нужен).
+
+## Приложения и магазины
+
+[ ] Читалка книг (EPUB/FB2/PDF/DjVu) на Go+Fyne: EPUB/FB2 — чистый Go, PDF — mutool/poppler CLI→PNG, DjVu — ddjvu; переиспользовать окно/жесты/тему/keepawake — план 0018
 
 ## Периферия из Go-кода
 
 [x] GPU/OpenGL: EGL поверх libhybris (android_wlegl), выбор Mali/llvmpipe, patches/glprobe.c (замер FPS) — doc/14
 [x] Двухпальцевый скролл: патч GLFW `patch_glfw_scroll.py` + видимая реакция в hello-ns220 (полоса, «прокрутка всего», «⇅»); ПРОВЕРЕНО ПАЛЬЦАМИ 21.11 (журнал: scroll=1078, taps=50) — doc/09 §9.6
 [ ] Тач-дополнения: соответствие координат FYNE_SCALE ↔ пиксели, двухпальцевый зум (pinch)
+[x] Ручной поворот «ручками»: системный поворот в Aurora 4 залочен вендором (B047), поэтому в hello-ns220 кнопки ⟲/⟳/0° крутят сцену (с пересчётом касаний), флаг -rot — план 0016
 [x] Звук: вывод через libpulse-simple (cgo) — тон 440/660 Гц слышен; микрофон: уровень дБ в реальном времени (тишина ≈ −60, тон ≈ −38); виброклик на тап (sysfs timed_output) — apps/hello-ns220 (audio.go, vibrate.go), doc/15
 [ ] Аудио-дополнения: маршрутизация (BT/наушники), запись в WAV/файл, bell cterm, политика nemo — plan 0011, doc/15
 [~] GPS из Go: geoclue-hybris на сессионной шине (юнит запускается из приложения), статус/координаты в HUD; фикса в помещении нет — doc/15, apps/hello-ns220/gps.go
-[ ] G-сенсор/ориентация: HAL binderized — sensorfwd `setInterval not ok`, прямой `hw_get_module` даёт NULL-vtable (B037); нужен клиент ISensors через libhwbinder/libhidlbase или LD_PRELOAD-обход batch() — bugs B031/B037, doc/15 §15.6, план 0016 P7
-[ ] Подсветка, аппаратные кнопки (power/volume/key), режимы сна/пробуждения, часы/аларм — plan 0013
-[ ] GSM-модем (ofono/RIL, dual SIM) и SD-карта (mmcblk1) из Go — plan 0014
+[x] G-сенсор + компас + ориентация: helper sensor-reader (QtSensors → sensorfw) в RPM, в HUD x/y/z, |g|, тангаж/крен, азимут, положение; D-Bus requestSensor больше не используется (B043), локаль-запятая исправлена (B044) — doc/15 §15.6, план 0016 P4
+[~] G-сенсор, устойчивость: MTK HAL «залипает» после нескольких клиентов (B045) — есть авто-сброс aurora-sensor-reset, надёжно помогает перезагрузка; глубже — ISensors/hwbinder — план 0016 P7
+[x] Подсветка (setuid aurora-brightness, 0..255), аппаратные кнопки (evdev event0/1/2, группа input), сон/экран (mce req_display_state_off/on), keepawake (пауза гашения — иначе HAL «спит» и сенсоры дают нули) — doc/15 §15.7–15.9
+[~] Часы/аларм (mce/ngfd, будильники) — plan 0013
+[x] GSM-модем: ofono `/ril_0` online, IMEI 356399112625294, SIM **нет** (`Present=false`), NetworkRegistration отсутствует → звонки (включая 112) недоступны (B048); SD-карта смонтирована (mmcblk1p1/p2) — doc/15 §15.10
+[ ] GSM: проверить с SIM-картой (регистрация, SMS, звонки на тестовый номер), SD-карта из Go (чтение/запись) — plan 0014

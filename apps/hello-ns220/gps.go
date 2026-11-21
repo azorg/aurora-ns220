@@ -186,3 +186,22 @@ func GPSStatusText(st int32) string {
 	}
 	return fmt.Sprintf("статус %d", st)
 }
+
+// toFloat приводит значение из D-Bus (int32/float64/Variant) к float64.
+func toFloat(v interface{}) float64 {
+	switch t := v.(type) {
+	case int32:
+		return float64(t)
+	case int64:
+		return float64(t)
+	case uint32:
+		return float64(t)
+	case uint64:
+		return float64(t)
+	case float64:
+		return t
+	case dbus.Variant:
+		return toFloat(t.Value())
+	}
+	return 0
+}

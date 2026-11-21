@@ -16,13 +16,20 @@
 #include <QAccelerometer>
 #include <QAccelerometerReading>
 #include <QCompass>
+#include <QOrientationSensor>
+#include <QOrientationReading>
 #include <QCompassReading>
 #include <QTimer>
 #include <cstdio>
+#include <clocale>
 
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
+
+    // Числа печатаем всегда с точкой: русская локаль даёт "9,071", и парсер
+    // приложения (Go) такие значения не принимает.
+    setlocale(LC_NUMERIC, "C");
 
     QAccelerometer accel;
     accel.setDataRate(10);
@@ -33,6 +40,16 @@ int main(int argc, char** argv)
                (long long)r->timestamp());
         fflush(stdout);
     });
+
+    QOrientationSensor orient;
+    orient.setDataRate(5);
+    QObject::connect(&orient, &QOrientationSensor::readingChanged, [&]() {
+        QOrientationReading* r = orient.reading();
+        if (!r) return;
+        printf("ORT %d %lld\n", (int)r->orientation(), (long long)r->timestamp());
+        fflush(stdout);
+    });
+    orient.start();
 
     QCompass compass;
     compass.setDataRate(2);

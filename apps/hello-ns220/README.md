@@ -24,9 +24,15 @@ RPM-пакетом и запускается из меню Aurora.
 | Звук | кнопки «Тон 440 Гц»/«Тон 880 Гц» (libpulse-simple через cgo), опция «пищать при тапе» |
 | Микрофон | непрерывный уровень в дБ (RMS→dBFS, сглаживание, пик 1 с) + полоса |
 | Вибро | «Вибрация 250 мс»/«Стоп», виброклик на тап (60 мс) и двойной (90 мс), sysfs timed_output; в журнале `VIBRO …` |
+| Выход | кнопка «Выход» в панели; корректный SIGTERM/SIGINT; один экземпляр (повторный запуск поднимает окно существующего) |
+| Кнопки | evdev event0/1/2 — последняя нажатая кнопка (VOLUMEUP/POWER/…), счётчик |
+| Подсветка | «−/+» через setuid `aurora-brightness`, значение 0..255 в панели |
+| Сон | «Сон/Экран» через mce; `-keepawake` не даёт экрану гаснуть (иначе сенсоры спят) |
+| Модем/SIM | ofono: online, IMEI, SIM present; 112 без SIM недоступен |
+| Поворот | кнопки «⟲ 90° / ⟳ 90° / 0°» поворачивают сцену (системный поворот в Aurora 4 залочен вендором, bugs B047); флаг `-rot N`; касания пересчитываются |
 | Прокрутка | полоса прокрутки справа, «прокрутка всего» в HUD и всплывающее «⇅ …» у точки касания (двухпальцевый жест → GLFW scroll) |
 | GPS | geoclue-hybris напрямую: статус, широта/долгота/высота, провайдер; юнит поднимается сам |
-| G-сенсор | sensorfw `dataAvailable(tiii)`; на этой прошивке HAL не отдаёт данные — честный статус (bugs B031) |
+| G-сенсор | helper `sensor-reader` (QtSensors → sensorfw): ускорение x/y/z, \|g\|, тангаж/крен, компас (азимут), положение (портрет/ландшафт/экраном вверх) |
 
 Замеры на устройстве (1200×1920, полный экран, ~70 объектов):
 **Mali ≈ 40–46 fps**, **llvmpipe ≈ 16–18 fps** (≈2.6×).
@@ -49,9 +55,16 @@ cd /home/user/hello-ns220
 `-mic=true|false`, `-accel=true|false`, `-gps=true|false`, `-vibro=true|false`,
 `-beep=true|false` (пищать при тапе).
 
-Периферия: `audio.go` (libpulse-simple), `vibrate.go`, `accel.go` (sensorfw),
-`gps.go` (geoclue), `panel.go` (панель). API и замеры — `doc/15-PERIPHERALS.md`.
-Для сборки нужны симлинки `libpulse*.so` в `/home/opt/libs` (см. doc/15 §15.2).
+Периферия: `audio.go` (libpulse-simple), `vibrate.go`, `accel.go` (helper QtSensors),
+`gps.go` (geoclue), `panel.go` (панель), `single.go` (один экземпляр).
+API и замеры — `doc/15-PERIPHERALS.md`. Для сборки нужны симлинки `libpulse*.so`
+в `/home/opt/libs` (doc/15 §15.2); helper сенсоров собирается
+`helper/sensor-reader.cpp` (нужен `qt5-qtsensors-devel`) и ставится в
+`/usr/libexec/aurora-hello-ns220/sensor-reader`.
+
+Если G-сенсор показывает нули: vendor HAL «залипает» после нескольких клиентов
+(bugs B045) — помогает `aurora-sensor-reset` (setuid) или перезагрузка; приложение
+само пробует сброс после трёх неудач.
 
 ## Проверка без тачскрина
 

@@ -176,6 +176,11 @@ func (b *board) Cursor() desktop.Cursor { return desktop.CrosshairCursor }
 // touch запоминает точку касания и кладёт её в след (для перекрестия).
 func (b *board) touch(pos fyne.Position) {
 	b.mu.Lock()
+	// экранные координаты -> координаты сцены (сцена может быть повёрнута)
+	if b.width > 0 && b.height > 0 {
+		x, y := b.unrotPoint(float64(pos.X), float64(pos.Y), b.width, b.height)
+		pos = fyne.NewPos(float32(x), float32(y))
+	}
 	b.hasTouch = true
 	b.lastPos = pos
 	b.trace = append([]touchPoint{{pos: pos, at: time.Now()}}, b.trace...)

@@ -23,7 +23,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 )
 
 // setupEnv выставляет окружение, нужное Fyne/GLFW на Aurora, если его не задали
@@ -108,6 +107,10 @@ func main() {
 	accelOn := flag.Bool("accel", true, "читать G-сенсор (sensorfw)")
 	gpsOn := flag.Bool("gps", true, "читать GPS (geoclue-hybris)")
 	beep := flag.Bool("beep", false, "пищать при тапе (по умолчанию выкл.)")
+	rotDeg := flag.Int("rot", 0, "поворот сцены при старте: 0/90/180/270")
+	buttonsOn := flag.Bool("buttons", true, "читать аппаратные кнопки (evdev)")
+	modemOn := flag.Bool("modem", true, "читать модем/SIM через ofono")
+	keepAwake := flag.Bool("keepawake", true, "не давать экрану гаснуть (сенсоры спят при погашенном экране)")
 	vibro := flag.Bool("vibro", true, "виброклик при тапе (по умолчанию вкл.)")
 	fullscreen := flag.Bool("fullscreen", true, "развернуть окно на весь экран (ресайз, не SetFullScreen)")
 	selftest := flag.Bool("selftest", false, "прогнать тап/двойной/долгое/свайпы/drag/скролл без тачскрина")
@@ -116,7 +119,7 @@ func main() {
 	flag.Parse()
 
 	a := app.NewWithID("ru.aurora.hello.ns220")
-	a.Settings().SetTheme(theme.DarkTheme())
+	a.Settings().SetTheme(newBigTheme())
 
 	w := a.NewWindow(fmt.Sprintf("Hello NS220 — %s", runtime.Version()))
 
@@ -156,6 +159,16 @@ func main() {
 	if *gpsOn {
 		StartGPS()
 	}
+	if *buttonsOn {
+		StartButtons()
+	}
+	if *modemOn {
+		StartModem()
+	}
+	if *keepAwake {
+		StartKeepAwake()
+	}
+	b.SetRot(*rotDeg)
 	beepOnTap.Store(*beep)
 	vibroOnTap.Store(*vibro)
 
@@ -163,7 +176,7 @@ func main() {
 		lg.Printf("EXIT по кнопке")
 		b.stop()
 		a.Quit()
-	})
+	}, b)
 	p.beep.SetChecked(*beep)
 	p.vibro.SetChecked(*vibro)
 
