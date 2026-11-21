@@ -12,7 +12,7 @@
 
 Name:           aurora-hello-ns220
 Version:        1.0.0
-Release:        5%{?dist}
+Release:        6%{?dist}
 Summary:        Go+Fyne+OpenGL demo for Aurora OS on NS220 (MVK-2020)
 License:        MIT
 URL:            https://example.local/aurora-ns220
@@ -76,6 +76,12 @@ command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database %{
 %{_datadir}/themes/aurora-default/meegotouch/z1.0/icons/aurora-hello-ns220.png
 
 %changelog
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-6
+- Виброклик: 25 мс мотор не успевал раскрутиться -> 60 мс (тап) и 90 мс
+  (двойной), запись в журнал VIBRO (B036).
+- Видимая реакция на прокрутку: полоса прокрутки справа, счётчик
+  «прокрутка всего» в HUD и всплывающее «⇅ …» у точки касания.
+
 * Sat Nov 21 2026 AI <ai@local> - 1.0.0-5
 - Запуск из меню: Exec — сам ELF-бинарник (не shell-скрипт), окружение
   (XDG/Wayland/EGL/локаль/Compose) выставляет setupEnv(), журнал — setupLog()

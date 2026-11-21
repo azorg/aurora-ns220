@@ -75,6 +75,13 @@ type board struct {
 	lastPos        fyne.Position
 
 	// HUD
+	// индикация прокрутки (двухпальцевый жест в GLFW -> Scrolled)
+	scrollTotal float64
+	scrollPulse time.Time
+	scrollText  *canvas.Text
+	scrollTrack *canvas.Rectangle
+	scrollThumb *canvas.Rectangle
+
 	hudBG    *canvas.Rectangle
 	hudText  []*canvas.Text
 	greet    *canvas.Text
@@ -168,6 +175,13 @@ func newBoard(nSpokes, nDiscs int) *board {
 	b.greetSub.TextSize = 22
 	b.greetSub.Alignment = fyne.TextAlignCenter
 
+	b.scrollTrack = canvas.NewRectangle(color.NRGBA{0x1c, 0x26, 0x36, 0xff})
+	b.scrollThumb = canvas.NewRectangle(color.NRGBA{0x35, 0xd0, 0xa5, 0xff})
+	b.scrollText = canvas.NewText("", color.NRGBA{0x35, 0xd0, 0xa5, 0xff})
+	b.scrollText.TextSize = 26
+	b.scrollText.TextStyle = fyne.TextStyle{Bold: true}
+	b.scrollText.Alignment = fyne.TextAlignCenter
+
 	b.hudBG = canvas.NewRectangle(color.NRGBA{0x00, 0x00, 0x00, 0xa8})
 	for i := 0; i < hudLines; i++ {
 		t := canvas.NewText("", colHUD)
@@ -222,6 +236,7 @@ func (r *boardRenderer) Objects() []fyne.CanvasObject {
 	}
 	objs = append(objs, b.greet, b.greetSub)
 	objs = append(objs, b.crossH, b.crossV, b.dot)
+	objs = append(objs, b.scrollTrack, b.scrollThumb, b.scrollText)
 	objs = append(objs, b.hudBG)
 	for _, t := range b.hudText {
 		objs = append(objs, t)
@@ -388,6 +403,32 @@ func (b *board) frame(now time.Time) {
 		b.dot.Move(fyne.NewPos(b.lastPos.X-ds, b.lastPos.Y-ds))
 	}
 
+	// индикатор прокрутки: трек у правого края + «ползунок» + всплывающий текст
+	const trackW = 14
+	trackH := h * 0.55
+	trackY := (h - trackH) / 2
+	b.scrollTrack.Move(fyne.NewPos(float32(w-trackW-8), float32(trackY)))
+	b.scrollTrack.Resize(fyne.NewSize(trackW, float32(trackH)))
+	const thumbH = 90
+	span := trackH - thumbH
+	pos := math.Mod(b.scrollTotal, 2*span)
+	if pos < 0 {
+		pos += 2 * span
+	}
+	if pos > span {
+		pos = 2*span - pos
+	}
+	b.scrollThumb.Move(fyne.NewPos(float32(w-trackW-8), float32(trackY+pos)))
+	b.scrollThumb.Resize(fyne.NewSize(trackW, thumbH))
+	if now.Sub(b.scrollPulse) < 900*time.Millisecond && b.hasTouch {
+		b.scrollText.Text = fmt.Sprintf("⇅ %.0f", b.scrollTotal)
+		b.scrollText.Color = color.NRGBA{0x35, 0xd0, 0xa5, 0xff}
+		b.scrollText.Move(fyne.NewPos(b.lastPos.X-90, b.lastPos.Y-70))
+		b.scrollText.Resize(fyne.NewSize(180, 32))
+	} else {
+		b.scrollText.Text = ""
+	}
+
 	// FPS: тики анимации и фактические отрисовки
 	b.frames++
 	if d := now.Sub(b.fpsAt); d >= time.Second {
@@ -402,6 +443,7 @@ func (b *board) frame(now time.Time) {
 		counters[k] = v
 	}
 	lastEv := b.lastEv
+	scrollTotal := b.scrollTotal
 	lastPos := b.lastPos
 	hasTouch := b.hasTouch
 	info := b.info
@@ -424,7 +466,7 @@ func (b *board) frame(now time.Time) {
 		fmt.Sprintf("свайпы ←%d →%d ↑%d ↓%d · drag %d · скролл %d",
 			counters["swipe-left"], counters["swipe-right"], counters["swipe-up"], counters["swipe-down"],
 			counters["drag"], counters["scroll"]),
-		"жест: " + orDash(lastEv),
+		fmt.Sprintf("жест: %s · прокрутка всего: %.0f", orDash(lastEv), scrollTotal),
 	}
 	if hasTouch {
 		lines = append(lines, fmt.Sprintf("точка касания: x=%.0f y=%.0f", lastPos.X, lastPos.Y))

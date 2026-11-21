@@ -44,7 +44,10 @@ var (
 func (b *board) Tapped(e *fyne.PointEvent) {
 	b.note("tap", "тап")
 	if vibroOnTap.Load() {
-		go func() { _, _ = Vibrate(25 * time.Millisecond) }()
+		// 25 мс мотор не успевает раскрутиться (ощущается как «нет вибро»);
+		// 60 мс — короткий отчётливый клик (проверка: bugs B036).
+		lg.Printf("VIBRO tap 60ms")
+		go func() { _, _ = Vibrate(60 * time.Millisecond) }()
 	}
 	if beepOnTap.Load() {
 		go func() { _ = PlayTone(880, 60*time.Millisecond) }()
@@ -56,7 +59,8 @@ func (b *board) Tapped(e *fyne.PointEvent) {
 func (b *board) DoubleTapped(e *fyne.PointEvent) {
 	b.note("double", "двойной тап")
 	if vibroOnTap.Load() {
-		go func() { _, _ = Vibrate(40 * time.Millisecond) }()
+		lg.Printf("VIBRO double 90ms")
+		go func() { _, _ = Vibrate(90 * time.Millisecond) }()
 	}
 	b.touch(e.Position)
 	b.ripple(e.Position)
@@ -70,6 +74,10 @@ func (b *board) TappedSecondary(e *fyne.PointEvent) {
 func (b *board) Scrolled(e *fyne.ScrollEvent) {
 	b.note("scroll", fmt.Sprintf("прокрутка dy=%.0f dx=%.0f", e.Scrolled.DY, e.Scrolled.DX))
 	b.touch(e.Position)
+	b.mu.Lock()
+	b.scrollTotal += float64(e.Scrolled.DY)
+	b.scrollPulse = time.Now()
+	b.mu.Unlock()
 }
 
 func (b *board) MouseDown(e *desktop.MouseEvent) {

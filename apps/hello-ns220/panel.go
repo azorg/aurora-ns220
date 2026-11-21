@@ -22,6 +22,7 @@ var (
 )
 
 type panel struct {
+	quit     func()
 	micBar   *widget.ProgressBar
 	micText  *canvas.Text
 	gText    *canvas.Text
@@ -31,8 +32,9 @@ type panel struct {
 	vibro    *widget.Check
 }
 
-func newPanel() *panel {
+func newPanel(quit func()) *panel {
 	p := &panel{
+		quit:     quit,
 		micBar:   widget.NewProgressBar(),
 		micText:  hudText("микрофон: —"),
 		gText:    hudText("G-сенсор: —"),
@@ -61,6 +63,7 @@ func (p *panel) view() fyne.CanvasObject {
 		btn("Тон 880 Гц", func() { go func() { _ = PlayTone(880, 900*time.Millisecond) }() }),
 		btn("Вибрация 250 мс", func() { go func() { _, _ = Vibrate(250 * time.Millisecond) }() }),
 		btn("Стоп вибро", func() { _ = VibrateStop() }),
+		btn("Выход", func() { p.quit() }),
 	)
 
 	micRow := container.NewHBox(

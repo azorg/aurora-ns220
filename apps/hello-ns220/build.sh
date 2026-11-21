@@ -27,6 +27,15 @@ if [ ! -f go.sum ] && [ -f /home/user/clear-ssh/go.sum ]; then
     cp /home/user/clear-ssh/go.sum go.sum
 fi
 
+# /home в Aurora монтируется noexec — без remount go/бинарь не запускаются.
+if ! [ -x "$GO" ]; then
+    mount -o remount,exec /home 2>/dev/null || true
+fi
+if ! [ -x "$GO" ]; then
+    echo "[!] $GO не исполняется: нужен 'mount -o remount,exec /home' (root)" >&2
+    exit 1
+fi
+
 echo "[*] go: $("$GO" version)"
 echo "[*] tags: wayland gles egl"
 "$GO" build -tags "wayland gles egl" -o "${OUT:-$HERE/hello-ns220}" "$@" .

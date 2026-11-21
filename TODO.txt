@@ -31,7 +31,7 @@
 [~] cterm — эмулятор терминала на Fyne (PTY, вкладки/плитки, темы, настройки, OSK): основа работает на планшете, развивается в ~/work/clear-ssh/cterm — план 0005
 [~] Своя экранная клавиатура RU/EN для программирования (модификаторы, Esc/Tab/стрелки): компонент pkg/fyneosk (cterm), исследование — osk/ — план 0006
 [x] Тестовое приложение apps/hello-ns220 (Hello world: Fyne+OpenGL, FPS, точка касания, жесты, окружение на экране): собрано на устройстве, Mali 40–46 fps / llvmpipe 16–18, -selftest и -shot работают, снимок с устройства — apps/hello-ns220/preview.png — план 0015
-[~] hello-ns220 из меню Aurora: запись и иконка есть, «кружок и закрытие» = песочница sailjail (исправлено `Sandboxing=Disabled`, иконка в теме — bugs B029/B030); нужен ретест. Реальный тачскрин уже принимает касания (tap/swipe в журнале) — план 0015 P9-P10
+[~] hello-ns220 из меню Aurora: исправлены песочница (B029), иконка (B030) и запуск через invoker (B035: Exec=ELF, окружение внутри, no-invoker, журнал ~/hello-ns220.log); нужен финальный ретест. Тачскрин принимает касания — план 0015 P9-P10
 [ ] Запуск Go/Fyne-приложений «как Aurora»: .desktop + иконка в меню, запуск через booster/invoker, trayIcon (Qt-хост + D-Bus) — план 0007
 
 ## RPM-пакеты и подпись
@@ -42,14 +42,22 @@
 [ ] Подпись RPM и исполняемых файлов своими ключами разработчика: hash-appraisal IMA (security.ima), developer-сертификат OMP / sdk-deploy-rpm, RnD-репозитории; цель — запуск своих бинарников при ima_appraise=enforce — план 0009
 [ ] Универсальный стенд: другие устройства/архитектуры (ARM64, новые версии Aurora): параметризация env.sh/скриптов, audit-чеклист, smoke-тест, эталонный образ — план 0010
 
+## Приложения и магазины
+
+[x] RuStore на Aurora 4 — ПРОВЕРЕНО, НЕВОЗМОЖНО (2026.11.21): официально нужен Aurora >= 5.1;
+    пакет ru.vk.RuStore-1.7-3.armv7hl есть (static.rustore.ru/osaurora/rustore32.rpm), но требует
+    GLIBC 2.32–2.34 (у нас 2.30), GLIBCXX 3.4.29/30 (у нас 3.4.25) и libmarket.so.0 (нет) — не грузится.
+    Пакет удалён, RPM в ~/aurora-ns220/build/rustore/. Альтернатива — веб-версия в браузере.
+    Детали: doc/ai/plans/0017.plan-rustore.md
+
 ## Периферия из Go-кода
 
 [x] GPU/OpenGL: EGL поверх libhybris (android_wlegl), выбор Mali/llvmpipe, patches/glprobe.c (замер FPS) — doc/14
-[~] Двухпальцевый скролл: патч GLFW `patches/patch_glfw_scroll.py` (2 пальца → события прокрутки, 1 палец — мышь) собран и установлен, нужен физический тест пальцами — doc/09 §9.6
+[x] Двухпальцевый скролл: патч GLFW `patch_glfw_scroll.py` + видимая реакция в hello-ns220 (полоса, «прокрутка всего», «⇅»); ПРОВЕРЕНО ПАЛЬЦАМИ 21.11 (журнал: scroll=1078, taps=50) — doc/09 §9.6
 [ ] Тач-дополнения: соответствие координат FYNE_SCALE ↔ пиксели, двухпальцевый зум (pinch)
 [x] Звук: вывод через libpulse-simple (cgo) — тон 440/660 Гц слышен; микрофон: уровень дБ в реальном времени (тишина ≈ −60, тон ≈ −38); виброклик на тап (sysfs timed_output) — apps/hello-ns220 (audio.go, vibrate.go), doc/15
 [ ] Аудио-дополнения: маршрутизация (BT/наушники), запись в WAV/файл, bell cterm, политика nemo — plan 0011, doc/15
 [~] GPS из Go: geoclue-hybris на сессионной шине (юнит запускается из приложения), статус/координаты в HUD; фикса в помещении нет — doc/15, apps/hello-ns220/gps.go
-[ ] G-сенсор: данные не отдаёт HAL (sensorfwd `setInterval not ok`); нужен обход batch()/свой адаптер — bugs B031, doc/15 §15.6
+[ ] G-сенсор/ориентация: HAL binderized — sensorfwd `setInterval not ok`, прямой `hw_get_module` даёт NULL-vtable (B037); нужен клиент ISensors через libhwbinder/libhidlbase или LD_PRELOAD-обход batch() — bugs B031/B037, doc/15 §15.6, план 0016 P7
 [ ] Подсветка, аппаратные кнопки (power/volume/key), режимы сна/пробуждения, часы/аларм — plan 0013
 [ ] GSM-модем (ofono/RIL, dual SIM) и SD-карта (mmcblk1) из Go — plan 0014

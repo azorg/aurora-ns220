@@ -140,6 +140,13 @@ func main() {
 		}()
 	}
 
+	// Один экземпляр: если уже запущено — просим показать окно и выходим.
+	si, already := acquireSingleInstance(w)
+	if already {
+		return
+	}
+	defer si.close()
+
 	if *micOn {
 		StartMic()
 	}
@@ -152,7 +159,11 @@ func main() {
 	beepOnTap.Store(*beep)
 	vibroOnTap.Store(*vibro)
 
-	p := newPanel()
+	p := newPanel(func() {
+		lg.Printf("EXIT по кнопке")
+		b.stop()
+		a.Quit()
+	})
 	p.beep.SetChecked(*beep)
 	p.vibro.SetChecked(*vibro)
 
@@ -180,10 +191,14 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-sig
+		s := <-sig
+		lg.Printf("SIGNAL %v — выходим", s)
 		b.stop()
 		fyne.Do(func() { a.Quit() })
 	}()
+	// Диагностика жизненного цикла: если окно закроет WM/lipstick, увидим это в журнале.
+	w.SetOnClosed(func() { lg.Printf("WINDOW closed (Fyne)") })
+	a.Lifecycle().SetOnStopped(func() { lg.Printf("APP stopped") })
 
 	b.statsEvery = *stats
 	b.start(*fps)

@@ -1,4 +1,65 @@
 2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * ПОДТВЕРЖДЕНО НА ЖИВОМ УСТРОЙСТВЕ после перезагрузки: приложение запускается из
+   меню (экземпляр 1.0.0-6, ppid=lipstick), в журнале taps=50 и scroll=1078 —
+   двухпальцевая прокрутка работает с реальными пальцами и индикация реагирует.
+   lipstick/sensorfwd active, IMA off, RuStore не установлен (пакет удалён).
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * RuStore: попытка установки выполнена и закрыта с доказательством.
+   Официально: RuStore для Aurora требует ОС >= 5.1 (справка RuStore). Пакет
+   32-бит существует: static.rustore.ru/osaurora/rustore32.rpm — ru.vk.RuStore-1.7-3.armv7hl,
+   4.0 МБ. Установлен в dev-режиме (`--nodeps`, валидатор отключён) — запуск падает:
+   `libmarket.so.0: cannot open shared object file`; в бинарнике требуются
+   GLIBC_2.32/2.33/2.34 (у нас 2.30), GLIBCXX_3.4.29/3.4.30 (у нас 3.4.25),
+   libmarket.so.0 и webview-компоненты Aurora 5 — без замены glibc/libstdc++
+   (т.е. без Aurora 5 для armv7, которой нет) не запустить. Пакет удалён,
+   RPM сохранён в ~/aurora-ns220/build/rustore/. План 0017 и TODO обновлены.
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * ИНЦИДЕНТ: после экспериментов с Android sensors HAL (прямые activate/poll,
+   сессии requestSensor без release) «залип» поворот экрана на 180° (B039) —
+   lipstick берёт ориентацию из sensorfwd. Решено перезагрузить устройство.
+   После `devel-su reboot` планшет остановился в меню загрузчика LK
+   (USB 0bb4:0afe, /dev/sda нулевого размера, сети нет) — нужен выбор Normal
+   на экране (B038). Записано в реестр багов, ждём действий у экрана.
+ * ПРОФИЛАКТИКА на будущее: HAL не дёргать напрямую (только sensorfwd/QtSensors),
+   после requestSensor — releaseSensor; перезагрузку делать кнопкой питания,
+   а автоматические команды слать только после возврата USB 0bb4:0a02 (RNDIS).
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * ВИБРОКЛИК ПОЧИНЕН: 25 мс мотор не успевал раскрутиться (B036) — теперь 60 мс на
+   тап и 90 мс на двойной, в журнал пишется `VIBRO tap 60ms`. Собрано, RPM 1.0.0-6
+   подписан и установлен.
+ * ВИДИМАЯ РЕАКЦИЯ НА ПРОКРУТКУ ДВУМЯ ПАЛЬЦАМИ: справа полоса прокрутки с
+   «ползунком» (двигается по scrollTotal), в HUD строка «жест: … · прокрутка всего: …»,
+   у точки касания всплывает зелёное «⇅ …» на 0.9 с. Проверено инжекцией в
+   `-selftest` (снимок: apps/hello-ns220/preview.png — видна полоса и -40).
+ * RuStore: записан в TODO и в план `doc/ai/plans/0017.plan-rustore.md` — ожидаемо
+   не встанет (клиент под Aurora 5/arm64, у нас 4.0.2.340/armv7hl, Android-рантайма
+   нет); проверки P0–P5 расписаны, рабочая альтернатива — веб-версия в браузере.
+ * G-СЕНСОР: новый диагноз (B037) — HAL binderized: `hw_get_module("sensors")` даёт
+   модуль и список датчиков (ACCELEROMETER handle=1), но vtable устройства
+   (activate/setDelay/poll/batch) = NULL, поэтому прямой вызов падал в 0; sensorfwd
+   ходит через hwbinder и получает от MTK `setDelay not ok`. Пути: клиент ISensors
+   (libhwbinder/libhidlbase есть в /system/lib) или LD_PRELOAD-обход setDelay→batch.
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * РАЗОБРАН запуск из меню («вижу в меню, но не стартует»). Диагностика: lipstick
+   запускает `invoker --type=generic --id=aurora-hello-ns220 --single-instance
+   /usr/bin/aurora-hello-ns220-launch`; Exec был shell-скриптом, а при живом
+   «первом экземпляре» invoker лишь сигналит ему — окна нет; старый процесс не
+   убивался (`pkill -x aurora-hello-ns220` не работает: comm обрезан до 15 символов
+   — `aurora-hello-ns`).
+   ИСПРАВЛЕНО (B035): Exec — сам ELF-бинарник; setupEnv() до app.New выставляет
+   XDG_RUNTIME_DIR, WAYLAND_DISPLAY, DBUS_SESSION_BUS_ADDRESS, EGL_PLATFORM,
+   FYNE_SCALE, LANG/LC_ALL, XCOMPOSEFILE и убирает Mesa-переменные; setupLog()
+   всегда пишет журнал в ~/hello-ns220.log (ротация 1 МиБ). В .desktop:
+   X-Nemo-Application-Type=no-invoker, TryExec, StartupNotify, StartupWMClass.
+   Проверено: `env -i … /usr/bin/aurora-hello-ns220` и
+   `invoker --type=generic --id=aurora-hello-ns220 --single-instance …` запускают
+   окно 1200×1920. Пакет 1.0.0-5 собран, подписан, установлен.
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
  * СДЕЛАНО (всё в одном окне apps/hello-ns220): звук, микрофон в дБ, виброклик,
    GPS и G-сенсор.
    - Звук: libpulse-simple через cgo (прототипы вручную — dev-пакета нет, симлинки
