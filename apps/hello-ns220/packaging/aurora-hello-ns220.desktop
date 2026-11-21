@@ -4,14 +4,17 @@ Name=Hello NS220
 Name[ru]=Hello NS220
 Comment=Go + Fyne + OpenGL demo for Aurora OS (NS220)
 Comment[ru]=Демонстрация Go + Fyne + OpenGL на Aurora OS (NS220)
-Exec=/usr/bin/aurora-hello-ns220-launch
+Exec=/usr/bin/aurora-hello-ns220
+TryExec=/usr/bin/aurora-hello-ns220
 Icon=aurora-hello-ns220
 Terminal=false
+StartupNotify=true
+StartupWMClass=aurora-hello-ns220
 Categories=Development;Utility;
+# lipstick не должен оборачивать запуск в invoker/booster: приложение —
+# обычный ELF, окружение (Wayland/EGL/локаль) выставляет само (B035).
+X-Nemo-Application-Type=no-invoker
 
-# Aurora запускает приложение в песочнице sailjail по «Default Profile»
-# (Audio;Bluetooth;Camera;…;WebView) — отсюда вопрос о разрешениях при первом
-# запуске и падение: в песочнице недоступен /run/display/wayland-0 и /dev/mali0.
-# Отключаем песочницу, как это делают системные fingerterm/csd. См. bugs B029.
+# Песочница sailjail по умолчанию закрывает /run/display и /dev/mali0 (B029).
 [X-Sailjail]
 Sandboxing=Disabled

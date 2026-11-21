@@ -12,7 +12,7 @@
 
 Name:           aurora-hello-ns220
 Version:        1.0.0
-Release:        4%{?dist}
+Release:        5%{?dist}
 Summary:        Go+Fyne+OpenGL demo for Aurora OS on NS220 (MVK-2020)
 License:        MIT
 URL:            https://example.local/aurora-ns220
@@ -76,6 +76,12 @@ command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database %{
 %{_datadir}/themes/aurora-default/meegotouch/z1.0/icons/aurora-hello-ns220.png
 
 %changelog
+* Sat Nov 21 2026 AI <ai@local> - 1.0.0-5
+- Запуск из меню: Exec — сам ELF-бинарник (не shell-скрипт), окружение
+  (XDG/Wayland/EGL/локаль/Compose) выставляет setupEnv(), журнал — setupLog()
+  в ~/hello-ns220.log. В .desktop: X-Nemo-Application-Type=no-invoker,
+  TryExec, StartupNotify, StartupWMClass (B035).
+
 * Sat Nov 21 2026 AI <ai@local> - 1.0.0-4
 - Периферия в одном окне: тон (libpulse-simple), микрофон в дБ, виброклик,
   GPS (geoclue-hybris), G-сенсор (sensorfw; на этой прошивке HAL не отдаёт данные).
