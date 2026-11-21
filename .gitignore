@@ -1,34 +1,25 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# Крупные блобы и результаты сборки в git НЕ храним (см. AGENTS.md,
+# раздел «Крупные файлы: репозиторий vs хранилище»). Внешнее хранилище:
+#   ~/aurora-ns220/{bootdump,fw,meta,parts}
+# В репозитории — только исходники/документация/скрипты/патчи и ссылки
+# на файлы хранилища с контрольными суммами.
 
-# Test binary, built with `go test -c`
-*.test
+# образы и прошивки
+*.img
+*.bin.bak
+*.elf
+*.zip
+*.tgz
+*.tar.gz
+*.tar.xz
+*.7z
+*.deb
+*.rpm
 
-# Code coverage profiles and other test artifacts
-*.out
-coverage.html
-coverage.txt
-coverage.xml
-*.coverprofile
-profile.cov
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-go.work
-go.work.sum
-
-# env file
-.env
-
-# Editor/IDE
-# .idea/
-# .vscode/
+# результаты сборки приложений
+apps/*/hello-ns220
+apps/*/*.armv7
+apps/*/hello-shot*.png
+build/
+dist/
+*.log

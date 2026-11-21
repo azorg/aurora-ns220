@@ -1,0 +1,231 @@
+================================================================================
+ЗАМЕТКИ: Установка Linux / Debian на планшет NS220 (Aurora OS)
+Дата: 2025-11-19
+Планшет: Aurora NS220, SoC MediaTek MT6737t, подключение: USB + SSH 192.168.2.15
+================================================================================
+
+--------------------------------------------------------------------------------
+1. РЕАЛЬНОЕ СОСТОЯНИЕ ПЛАНШЕТА (выявлено прямыми проверками через SSH + root)
+--------------------------------------------------------------------------------
+
+1.1. Железо
+  - SoC: MediaTek MT6737t (в конфиге ядра ro.board.platform=mt6737t,
+    CONFIG_MTK_PLATFORM="mt6735")
+  - CPU: 4x ARMv7 Cortex-A53 (ARMv7 Processor rev 3), СТРОГО 32-BIT:
+    ro.product.cpu.abilist=armeabi-v7a,armeabi (abi64 пустая)
+    => 64-bit ядра/дистрибутивы невозможны в принципе
+  - RAM: ~1.96 ГБ + swap 3 ГБ
+  - Накопитель: eMMC (mmcblk0, ~26+ партиций, GPT), sdcard (mmcblk1)
+  - Дисплей: fb0, virtual_size=1216x5760 (мульти-экран fb), DRM/DRI НЕТ
+  - GPU: MTK (нет /dev/dri, только framebuffer + software-рендеринг)
+
+1.2. ТЕКУЩАЯ ОС — ВАЖНАЯ ТОЧКА, ИСХОДНАЯ ГИПОТЕЗА БЫЛА НЕВЕРНОЙ
+  /etc/os-release:
+    NAME="Aurora"
+    ID=auroraos
+    VERSION="4.0.2.340 (Balakovo)"
+    SAILFISH_BUILD=340
+    HOME_URL="https://auroraos.ru/"
+
+  => Aurora OS = РУССКИЙ ФОРК SAILFISH OS (Jolla), вер. Sailfish 4.0.
+     Это Нормальный LINUX (RPM-based), а НЕ Android.
+  - Ядро: 3.18.79 (MediaTek BSP, PREEMPT, собран 2023-03-27)
+  - ФС-лейаут: /dev/mapper/sailfish-root (LVM) на /, sailfish-home на /home,
+    systemd, cgroup v1, autofs, MTP functionfs на /dev/mtp
+  - Android-образы (recovery ramdisk, boot.img, файлы omni_ns220) из
+    рабочего каталога УДАЛЕНЫ — Android на устройстве не используется
+    и для задачи не нужен.
+
+1.3. ПЕРЕФИРИЯ: ЧТО УЖЕ РАБОТАЕТ ПОД LINUX (т.е. доказано на этой ОС)
+  GSM/модем:
+    - /vendor/bin/mtkrild  (процесс 771, root)
+    - /vendor/bin/hw/rilproxy -l mtk-rilproxy.so (pid 821)
+    - /usr/sbin/ofonod (pid 894) — большинство плагинов отключены,
+      работает MTK-плагин; SIM: dual (persist.radio.multisim.config=ss),
+      ro.telephony.sim.count=2, SIM не вставлена (iccid=N/A)
+  Wi-Fi:
+    - модули: wlan_drv_gen3, wmt_chrdev_wifi, wmt_drv
+    - /dev/wmtWifi (wmtWifi) -> стандартный wpa_supplicant
+  Bluetooth:
+    - bt_drv + wmt_drv, /dev/stpbt (H4-serial), /dev/vhci (virtual HCI)
+    - userspace: bluez5 (виден в плагинах ofono)
+  GPS:
+    - gps_drv, /dev/stpgps — это ПРОСТО NMEA-over-serial!
+  FM: fmradio_drv
+  Аудио:
+    - ЯДРО ГIVEТ ПОЛНЫЙ ALSA: /dev/snd/pcmC0D0p..D23 (20+ PCM)
+    => любой Linux-аудиостек (alsa-utils, PulseAudio) встанет как есть
+  Камера/видео:
+    - /dev/Vcodec — MTK VPU (закрытый userspace-блок)
+    - V4L2 НЕТ (нет /dev/video*), MTK-камера — проприетарный стек
+  USB-гаджет:
+    - functionfs: f_accessory, f_ffs, f_gser, f_mtp, f_mass_storage,
+      f_rndis, f_acm, f_audio_source, f_midi, f_ptp
+    - сейчас: MTP (/dev/mtp)
+  Прочее: mtk-kpd, mtk-adc-cali, mtk_cmdq, mtk_disp_mgr, ttyMT0-4, ttyGS0-7
+
+1.4. ЗАГРУЗКА
+  - Цепочка: preloader (eMMC) -> LK (lk_signoff.bin, в рабочей папке)
+    -> kernel (MTK BSP 3.18.79) -> rootfs
+  - Boot только с eMMC (USB-boot не поддерживается)
+  - Флешь нового rootfs: SP Flash Tool / DFU (нужны preloader + scatter)
+
+1.5. Доступ/инструменты в рабочей папке
+  - root_cmd.sh  — ssh + devel-su (пароль 1234) к 192.168.2.15, команда строкой
+  - runroot      — scp скрипта на /tmp/__s.sh + выполнение с root
+  - lk/lk_signoff.bin — подписанный LK (загрузчик MTK), сохранить
+  - bootdump/lk.img, para.img, seccfg.img, items.img — слитые разделы
+    загрузчика/параметров/конфигурации (MTK, НЕ Android-специфичны),
+    нужны для восстановления через SP Flash Tool
+  - meta/omp*.xml, installed.txt, updates.json — каталог пакетов Aurora
+  - bin/ — IMA-валидация (external_ima.so, validation.so,
+    load-certificates, update-revocation-list), часть Aurora
+
+--------------------------------------------------------------------------------
+2. ОТВЕТЫ НА ВОПРОСЫ
+--------------------------------------------------------------------------------
+
+В.1  КАКИЕ LINUX МОЖНО УСТАНОВИТЬ?
+
+  Ключевое ограничение: mainline-ядра для MT6737t НЕ СУЩЕСТВУЕТ
+  (нет драйверов WLAN/BT/GPS/модема в upstream). Значит:
+    -> любое устанавливаемое Linux ДОЛЖНО ехать на MTK BSP ядре 3.18.79
+       (или на его модификации), rootfs может быть любой armhf.
+
+  Встанет (armhf, ядро 3.18 совместимо):
+    - Debian armhf: 10 (buster) — самый консервативный;
+      11 (bullseye) — рекомендуемый; 12 (bookworm) — гlibc 2.36 требует
+      ядра >=3.2, заведётся, но cgroup-v2/io_uring-зависимое ПО может
+      работать некорректно (cgroup в ядре — только v1!)
+    - Ubuntu armhf (18.04/20.04 — наиболее безопасные)
+    - Alpine (musl) armv7
+    - Fedora armv7hl
+    - Yocto/Buildroot (кастомный)
+  НЕ встанет:
+    - postmarketOS нативно (требует mainline + supported SoC) —
+      хотя chroot-версия над MTK-ядром теоретически возможна
+    - любые 64-bit дистрибутивы (CPU 32-bit)
+  Метод установки full-OS: SP Flash Tool (DFU через USB), запись
+  rootfs-раздела — ровно так, как установлена текущая Aurora.
+  Риски: нужен preloader (DFU всегда работает, если preloader жив);
+  lk_signoff.bin сохранён, scatter/preloader — сохранить ОБЯЗАТЕЛЬНО.
+
+В.2  МОЖНО ЛИ В AURORA ОС ДАТЬ ВСЕ ТРАДИЦИОННЫЕ OPEN SOURCE ПАКЕТЫ?
+
+  Нативно — НЕТ:
+    - Aurora/Sailfish — RPM-экосистема со своим glibc/userspace
+    - .deb ставиться не будет
+    - чужие RPM-репозитории (Fedora/openSUSE) смешивать в системе
+      НЕ стоит: разные версии glibc, rpm-конфликты -> риск поломки
+    - package manager Aurora (omp/хранилище auroraos.ru) — свой каталог
+
+  Практически — ДА, двумя способами:
+    a) ЧИСТЫЙ CHROOT (не proot — у нас есть root):
+       Debian 11 armhf (или Ubuntu) rootfs на ext4-образе/разделе,
+       chroot с пробросом /dev, /proc, /sys, /run
+       -> полный apt, весь традиционный Debian-мир
+       -> сеть: общий с хостом kernel-стек (wlan/ethernet доступны)
+       -> ядро 3.18: часть свежего ПО (cgroup v2, io_uring, новые
+         systemd-фичи) — не будет работать; остальное — да
+    b) Termux (chroot или proot): apt-подобный, свой репозиторий,
+       собирается под arm32; покрывает большую часть «традиционных»
+       пакетов, но это не Debian
+  Docker/LXC на ядре 3.18: проблематично (cgroup v1, ограниченный
+  seccomp, user-namespace) -> предпочесть chroot/proot.
+
+В.3  МОЖНО ЛИ ПОСТАВИТЬ АЛЬТЕРНАТИВНЫЙ ПАКЕТНЫЙ МЕНЕДЖЕР?
+
+  - В самой Aurora: dnf/yum можно докинуть (это rpm-система), но ставить
+    apt/dpkg ВНУТРЬ rpm-системы — плохая идея (два metadatabase-слоя,
+    конфликты файловой собственности).
+  - В chroot/контейнере: ДА, ЛЮБОЙ:
+      Debian chroot -> apt; Alpine chroot -> apk; Arch chroot -> pacman;
+      Nix (частично, armv7lf); RPM chroot -> dnf/rpm
+    Чистое и безопасное решение — PM живёт в своей песочнице.
+  - Termux: свой apt-подобный manager.
+
+В.4  МОЖНО ЛИ ПОСТАВИТЬ DEBIAN-ПОДОБНЫЙ ДИСТРИБУТИВ, СОХРАНИВ
+     ПРИЛОЖЕНИЯ ПЕРЕФИРИИ (СЕТЬ, BT, GPS, АУДИО, ВИДЕО, GSM)?
+
+  ДА. И более того: ТЕКУЩАЯ Aurora УЖЕ ЕСТЬ ПОДТВЕРЖДЕНИЕ ЭТОЙ АРХИТЕКТУРЫ
+  (Linux userspace + MTK BSP ядро + MTK vendor-демоны). Схема:
+
+  [ MTK BSP kernel 3.18.79 (НЕ ТРОГАТЬ)
+      + /vendor (mtkrild, rilproxy, wmt/hal-блоки)
+      + Debian armhf userspace вместо Aurora ]
+
+  По подсистемам:
+
+  GSM/LTE ....... ✅  mtkrild + rilproxy (/vendor) + ofono (как сейчас,
+                      он уже Linux-демон; либо pppd/AT-порт напрямую)
+  Wi-Fi ......... ✅  std wpa_supplicant + /dev/wmtWifi
+  Bluetooth ..... ✅  bluez (D-Bus) + /dev/stpbt (H4) или /dev/vhci
+  GPS ........... ✅  /dev/stpgps = NMEA-serial -> gpsd (trivial)
+  FM ............ ⚠️  fmradio_drv есть; userspace MTK FM — не портирован,
+                      вероятно потеря
+  Аудио ......... ✅  ядро даёт полные ALSA-узлы;
+                      alsa-utils, PulseAudio (PipeWire — НЕТ, ядро старое)
+  USB-гаджет .... ✅  functionfs: MTP/ADB/RNDIS/configfs — переносится
+  Видео (VPU) ... ⚠️  ПОТЕРЯ аппаратного кодека: /dev/Vcodec = закрытый
+                      MTK-блок без V4L2, привязан к их userspace-API.
+                      На чистом Debian: только software (ffmpeg/x264/
+                      aom) — на 4x A53 медленно, но работает
+  Камера ........ ❌  V4L2 нет, MTK-камера = проприетарный userspace
+                      (mtkcam) -> на Debian, скорее всего, недоступна
+  Дисплей ....... ⚠️  fb0 (1216x5760) работает, DRM/DRI нет ->
+                      только software-рендеринг (X на fbdev / Wayland-
+                      fb; GPU-ускорения нет; Aurora тоже так работает)
+  Сеть (LAN) .... ✅  если есть ethernet/USB-RNDIS — std-драйверы ядра
+
+  Итог: переносится ВСЁ КРИТИЧНОЕ (GSM, Wi-Fi, BT, GPS, аудио);
+  теряется (или требует глубокого портирования блобов): HW-видео,
+  камера, GPU-ускорение.
+
+--------------------------------------------------------------------------------
+3. РЕКОМЕНДОВАННЫЙ ПЛАН ДЕЙСТВИЙ
+--------------------------------------------------------------------------------
+
+Шаг 1 (нулевой риск, 1 вечер): Debian 11 armhf CHROOT внутри Aurora
+  - root есть (devel-su) -> настоящий chroot, не proot
+  - ext4-образ на /data (или отдельный раздел) с debian-armhf-rootfs
+  - проброс: /dev, /proc, /sys, /run; сеть — общий kernel-стек
+  - результат: «весь Debian» + Aurora как provider периферии
+    (GSM/WiFi/BT/GPS/ALSA работают на уровне ядра и видны в chroot)
+
+Шаг 2 (средний риск): FULL Debian на eMMC
+  - взять образ Aurora, заменить rootfs-раздел на Debian 11 armhf
+  - сохранить: MTK kernel 3.18.79, /vendor (mtkrild/rilproxy), LK
+  - kernel на этой плате упаковывается в boot-образ формата
+    "ANDROID!" (структура заголовка MTK/Android boot image:
+    kernel + ramdisk + cmdline). Это ФОРМАТ УПАКОВКИ, а не Android OS:
+    Aurora грузится тем же способом. Для Debian нужно собрать такой же
+    boot.img (mtk-mkbootimg / готовый из Aurora, заменив ramdisk)
+  - прошивка: SP Flash Tool (DFU/USB)
+  - ОБЯЗАТЕЛЬНО до прошивки: сохранить preloader + scatter file
+    (страховка от bricking; lk_signoff.bin уже в папке)
+
+Шаг 3 (по необходимости): докинуть в Debian:
+  - ofono (для GSM поверх rilproxy) или pppd/AT
+  - bluez, wpa_supplicant, gpsd, alsa-utils, pulseaudio
+  - USB-gadget (RNDIS/ADB/MTP) через configfs
+  - UI: LXQt/XFCE на software-рендеринге (2 ГБ RAM хватит)
+
+Ожидаемые потери при full-Debian: HW-видеокодек, камера, GPU-ускорение.
+
+--------------------------------------------------------------------------------
+4. ПОЛЕЗНЫЕ ФАКТЫ / ПАМЯТКА
+--------------------------------------------------------------------------------
+
+- Ядро: 3.18.79 MTK BSP (cgroup v1, seccomp старый, без mainline-драйверов)
+- boot-раздел = образ формата "ANDROID!" (kernel+ramdisk+cmdline), selinux=0,
+  ima_appraise=force — учитывать при сборке своего boot.img
+- CPU 32-bit only -> только armhf/armv7l-пакеты (arm64/amd64 НЕ ПОДХОДЯТ)
+- Debian: 10 = консервативно, 11 = оптимум, 12 = ок но с оговорками
+- GSM-цепочка: mtkrild -> rilproxy(mtk-rilproxy.so) -> ofono [SIM x2, dual]
+- Wi-Fi: /dev/wmtWifi; BT: /dev/stpbt + /dev/vhci; GPS: /dev/stpgps (NMEA)
+- Аудио: полный ALSA в ядре (pcmC0D0p..D23)
+- No V4L2, no /dev/dri, no cgroup v2, no io_uring
+- Флешь: preloader->LK->kernel, SP Flash Tool; USB = только data/DFU
+- SSH: defaultuser@192.168.2.15, root: devel-su (pwd 1234)
+  (root_cmd.sh — команда строкой; runroot — скриптом)
+================================================================================

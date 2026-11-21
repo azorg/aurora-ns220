@@ -1,0 +1,48 @@
+#!/bin/sh
+# debian-chroot — вход в Debian (bookworm, armhf) на Aurora.
+#
+#   debian-chroot                  интерактивный shell
+#   debian-chroot apt update       выполнить команду в chroot
+#
+# Требует root (mount bind). /home должен быть с exec (скрипт сам remount-ит).
+set -e
+R=${DEBIAN_ROOT:-/home/chroot/debian}
+
+[ -d "$R" ] || { echo "нет rootfs: $R" >&2; exit 1; }
+[ "$(id -u)" = "0" ] || { echo "нужен root" >&2; exit 1; }
+
+# /home обычно noexec — иначе внутри ничего не запустится
+mount -o remount,exec /home 2>/dev/null || true
+
+umount_all() {
+    for d in tmp dev/pts dev sys proc; do
+        mountpoint -q "$R/$d" 2>/dev/null && umount "$R/$d" 2>/dev/null || true
+    done
+}
+
+mount_one() {  # $1 = путь внутри системы (proc, sys, dev, dev/pts)
+    [ -d "$R/$1" ] || mkdir -p "$R/$1"
+    if ! mountpoint -q "$R/$1" 2>/dev/null; then
+        mount --bind "/$1" "$R/$1"
+    fi
+}
+
+mount_one proc
+mount_one sys
+mount_one dev
+mount_one dev/pts
+
+if [ -d "$R/tmp" ] && ! mountpoint -q "$R/tmp" 2>/dev/null; then
+    mount -t tmpfs tmpfs "$R/tmp" 2>/dev/null || true
+fi
+
+# DNS
+cp /etc/resolv.conf "$R/etc/resolv.conf" 2>/dev/null || true
+grep -q "127.0.0.1" "$R/etc/hosts" 2>/dev/null || echo "127.0.0.1 localhost" > "$R/etc/hosts"
+
+if [ $# -eq 0 ]; then
+    trap 'umount_all' EXIT INT TERM
+    exec chroot "$R" /bin/bash -l
+else
+    exec chroot "$R" "$@"
+fi

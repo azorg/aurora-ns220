@@ -1,0 +1,143 @@
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * СДЕЛАНО (всё в одном окне apps/hello-ns220): звук, микрофон в дБ, виброклик,
+   GPS и G-сенсор.
+   - Звук: libpulse-simple через cgo (прототипы вручную — dev-пакета нет, симлинки
+     .so в /home/opt/libs, bugs B034), тон 440/660 Гц — СЛЫШЕН (подтверждено
+     человеком), кнопки и опция «пищать при тапе».
+   - Микрофон: непрерывный захват, RMS→dBFS со сглаживанием и пиком; тишина
+     ≈ −60…−66 дБ, тон/голос ≈ −32…−40 дБ (видно в HUD и журнале PERIPH).
+   - Вибро: /sys/class/timed_output/vibrator/enable (мс), кнопки «Вибрация/Стоп»,
+     виброклик 25 мс на тап и 40 мс на двойной (чекбокс).
+   - GPS: geoclue-hybris напрямую (org.freedesktop.Geoclue.Providers.Hybris),
+     автозапуск юнита через systemd --user; статус 1 «поиск» (в помещении фикса
+     нет), провайдер «Android GPS provider»; GetPosition разбирается вручную
+     (B032), Master не нужен.
+   - G-сенсор: D-Bus sensorfw (requestSensor + dataAvailable(tiii)) реализован,
+     но данных нет: MTK HAL отвергает setDelay (`HybrisAdaptor::setInterval not ok`).
+     Проверены ioctl /dev/gsensor, прямой HAL через libhybris (SIGSEGV на activate),
+     QtSensors (нули), i2c-dev (нет); в HUD — честный статус (bugs B031).
+ * ДВУХПАЛЬЦЕВАЯ ПРОКРУТКА: новый патч `patches/patch_glfw_scroll.py`
+   (AURORA_TOUCH_SCROLL_V2) — 1 палец по-прежнему мышь, 2 пальца отменяют клик и
+   дают события scroll (средняя точка, накопление, одно событие на кадр).
+   Применён к /home/opt/aurora-fyne/go-glfw34, приложение пересобрано;
+   однопалечные жесты проверены selftest — работают. Нужен физический тест.
+ * ДОКУМЕНТАЦИЯ: doc/15-PERIPHERALS.md (API, замеры, ограничения), doc/09 §9.6
+   (двухпальцевый скролл), plan 0016, bug-и B031–B034, TODO обновлён.
+ * ЗАМЕЧЕНО: lipstick-D-Bus скриншот закрыт, поэтому снимки делает само приложение
+   (`-shot`); `pkill -f` в ssh-команде убивает саму сессию (B033) — только `pkill -x`.
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * ИСТОРИЯ: сохранены первые снимки «Hello world» с устройства —
+   `apps/hello-ns220/doc/history/01-first-fullscreen-1200x1920.png` (10:23, после
+   `-selftest`: счётчики жестов, точка касания 700,900, Mali, IMA off) и
+   `02-first-clean-render-1200x1920.png` (10:34, «чистый» кадр, FPS 59.8).
+   `doc/history/README.md` — хронология первого запуска (10:15 окно 328×248 →
+   10:19 ресайз до 1200×1920 → 10:23/10:34 снимки) и объяснение, почему снимок
+   делает само приложение (lipstick-D-Bus закрыт, bugs B010).
+ * ПОДТВЕРЖДЕНО ЧЕЛОВЕКОМ: звуковой сигнал (440 Гц, paplay → sink.primary_output)
+   СЛЫШЕН на планшете. Пульс-стек живой: `pactl info` → PulseAudio 14.2 (omp),
+   sink.primary_output / sink.deep_buffer (module-droid-card), микрофон —
+   source.droid. Вибратор: `/sys/class/timed_output/vibrator/enable` доступен на
+   запись пользователю (группа input), запись длительности в мс — rc=0.
+   Дальше — Go-проба «вибро + звук» (на очереди), затем G-сенсор/GPS.
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * РАЗОБРАН запуск из меню Aurora (жалоба: «кружок и закрывается», при первом запуске
+   вопрос о разрешениях). Причина — песочница sailjail: без `[X-Sailjail]` липстик
+   применяет Default Profile (Audio;Camera;…;UserDirs;WebView), внутри песочницы нет
+   `/run/display/wayland-0` и `/dev/mali0`, процесс падает до вывода ошибки; плюс
+   нестандартный `X-Nemo-Application-Type=no-invoker`. ИСПРАВЛЕНО в .desktop:
+   `[X-Sailjail] Sandboxing=Disabled`, ключ убран (как у fingerterm/csd); лаунчер
+   теперь пишет журнал в `$HOME/hello-ns220.log` (из меню нет терминала). Иконка:
+   lipstick ищет `image://theme/<Icon>` → /usr/share/themes/aurora-default/meegotouch/
+   z1.0/icons/ (в hicolor нет index.theme), добавлена установка 86×86 и 256×256.
+   Пакет 1.0.0-3 собран/подписан/установлен. Баги B029, B030; раздел 6.6 в
+   doc/06-PACKAGING.md (sailjail, иконка, диагностика).
+ * ПОДТВЕРЖДЕНО ЖИВЫМИ КАСАНИЯМИ: при запуске через `invoker --type=generic` с экрана
+   пришли реальные события — `GESTURE tap`, `GESTURE swipe-left (-245 px)` с ростом
+   счётчиков в HUD. Доставка wl_touch→mouse и классификатор работают на настоящем
+   пальце (план 0015 P10 частично закрыт).
+ * ПРОВЕРЕНО: лаунчер работает в пустом окружении (`env -i HOME=… PATH=/usr/bin:/bin`) —
+   BOOSTER/липстик-путь не зависит от переменных ssh-сессии; `invoker --type=generic`
+   и `--type=no-invoker` запускают приложение. `sailjail -p <desktop> <cmd>` для
+   нашего не-sailjail приложения не работает (rc=1, sailjaild ждёт unit
+   `<name>.service`) — поэтому песочницу и отключаем.
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * СДЕЛАНО: тестовое приложение `apps/hello-ns220` (Go 1.27.4 + Fyne 2.8.2 + GLFW 3.4
+   патченный, сборка НА планшете). Hello world + анимация «радар»+круги через OpenGL,
+   HUD с двумя FPS (тики/факт. отрисовки), приветствие, точка касания (перекрестие,
+   кольцо, затухающий след, «волны»), распознавание тапа/двойного/долгого (650 мс)/
+   свайпов ←→↑↓ (60 px, 900 мс)/drag/скролла со счётчиками, сведения об окружении
+   (ОС 4.0.2.340, ядро 3.18.79, arm, Mali через libhybris, IMA off, версии Fyne/GLFW).
+   Замеры: Mali 40–46 fps, llvmpipe 16–18 fps при 1200×1920 (≈2.6×).
+   Снимок с устройства — `apps/hello-ns220/preview.png`.
+ * ДОБАВЛЕНО: `-selftest` (прогон жестов без тачскрина через те же обработчики Fyne;
+   проверено: taps=3 double=1 hold=2 left/right/up/down=1 drag=1 scroll=1) и
+   `-shot/-shot-delay` (PNG окна — lipstick-скриншот закрыт политикой D-Bus; обход
+   найден свой). `scripts/deploy.sh` (доставка исходников, сборка, запуск, снимок).
+ * RPM: `apps/hello-ns220/packaging/{spec,.desktop,иконка,лаунчер,build-rpm.sh}`.
+   Собран `aurora-hello-ns220-1.0.0-1.armv7hl.rpm`, подписан своим GPG-ключом
+   (gpg2 2.0.4, `rpm --addsign`; поставлен пакет rpm-sign), проверка `rpm -Kv` → OK.
+   Установлен на устройство (`--define '__transaction_validation %{nil}'`), запуск
+   `/usr/bin/aurora-hello-ns220-launch` работает. Пакет вне git:
+   `~/aurora-ns220/build/rpm/aurora-hello-ns220-arm7-signed.rpm`.
+ * НАЙДЕНО и занесено в реестр багов (B023–B028): очередь `fyne.Do` залипает, если
+   звать её из анимационной горутины (лечение — `fyne.NewAnimation`); `SetFullScreen`
+   на wl_shell даёт чёрный кадр (ресайз до размера экрана через GLFW); без
+   `LANG`/`XCOMPOSEFILE` окно не создаётся (XKB compose); для подписи нужен пакет
+   `rpm-sign`; `brp-strip-static-archive` падает на busybox-xargs (глушить);
+   GPU в `/proc/self/maps` виден только после старта GL.
+ * ДОКУМЕНТАЦИЯ: `apps/hello-ns220/README.md`, план `doc/ai/plans/0015.plan-hello-demo.md`
+   (P0–P8 сделано; P9 меню Aurora и P10 реальный тачскрин — за человеком у экрана;
+   P11 — доверие OMP), обновлены TODO/README/doc-00-INDEX.
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * ПЕРЕНОС ЗНАНИЙ из `~/work/clear-ssh/cterm/aurora` в этот репозиторий (канон теперь здесь):
+   `doc/` — документация 00–14 + FYNE-ON-AURORA.md (мастер); из двух расходившихся версий
+   взяты актуальные: FYNE-ON-AURORA.md и 08-DEVICE-FACTS.md — из fyne.io (там уже учтён
+   Mali), остальные — из cterm/aurora (новее). 10-GPU-HARDWARE.md слит с 14-HARDWARE-ACCELERATION
+   (полное покрытие), ссылки поправлены. `doc/ai/` — bugs/README.md заменён полным реестром
+   B001–B022 (было B001–B008), добавлены bugs/osk-host-bugs.md и notes/experiment-log.md;
+   исходный план cterm/aurora — приложением A в plans/0005; план 0003 обновлён (boot-mode есть).
+ * ДОБАВЛЕНО: `patches/` (glfw-aurora.patch, glfw-wl-shell.patch, patch_glfw*.py,
+   wlinfo.c, wltest.c, glprobe.c), `scripts/` (boot-mode, debian-chroot, desktop-хелперы,
+   run-fyne-gpu.sh, run-cterm-hw.sh, screenshot.sh, mtk_bridge7.py, mtkrun.sh, runmesa.sh,
+   build_fyne_ws.sh, fix_ws.sh), `tests/gesture-keyboard`, `template/aurora-hybrid-app`,
+   `osk/` (README + screens/screens-host-README.md).
+ * КРУПНОЕ ВЫНЕСЕНО (правило git-чистоты): osk/screens + osk/screens-host (1.5 МБ PNG) →
+   `~/aurora-ns220/osk-screens/` (манифест с sha256 — `osk/screens/MANIFEST.md`);
+   `go-glfw-aurora-patched.tgz` → `~/aurora-ns220/build/fyne/`. Каталог `fyne.io/` УДАЛЁН
+   после проверки, что всё уникальное перенесено (10-GPU-HARDWARE → 14, glprobe.c → patches/,
+   template/, tests/, run-fyne-gpu.sh, boots/ chroot-скрипты, артефакты).
+ * СОЗДАНЫ: `README.md` (карта репозитория, краткие факты, что работает) и `doc/00-INDEX.md`
+   (единый индекс под новую структуру). Ссылки на старые пути в TODO/AGENTS/doc/ai поправлены.
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * ПРАВИЛО (AGENTS.md): репозиторий `~/work/aurora-ns220` сохраняется в git как
+   история проекта, поэтому крупные файлы (> ~1 МБ: образы разделов, boot/прошивки,
+   дампы, rootfs, архивы toolchain, RPM/DEB, серии скриншотов) хранятся ВНЕ репозитория
+   — в `~/aurora-ns220/{bootdump,fw,meta,parts}`; в репозитории — только путь,
+   md5/sha256 и скрипт получения/сборки. Добавлен раздел в AGENTS.md и `.gitignore`
+   (типовые тяжёлые расширения + результаты сборки приложений).
+ * СУЩЕСТВУЮЩИЕ крупные файлы пока ниже порога и оставлены: fyne.io/artifacts/
+   go-glfw-aurora-patched.tgz (635K, воспроизводим сборкой), lk/lk_signoff.bin (512K),
+   lk_signoff.zip (233K). Переедут в ~/aurora-ns220 при первом превышении порога
+   или при следующем сеансе работы с прошивкой.
+
+2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
+ * НАВЕДЕН ПОРЯДОК: репозиторий оформлен как база знаний. Созданы:
+   AGENTS.md (правила работы AI-агента: вести ChangeLog.ai, doc/ai в стиле
+   RFC, актуальный TODO.txt), TODO.txt (один актуальный план: цели проекта
+   с отметкой уже сделанного), doc/ai/ (README, bugs/README.md — 8 известных
+   проблем «симптом→причина→решение» из REPORT и cterm/aurora, audit/0001 —
+   чек-лист аудита нового устройства, plans/0001, notes/experiment-log.md).
+   README.md — карта репозитория. Существующие файлы (REPORT, fyne.io/,
+   lk/, bin/, скрипты) на месте, только референсятся.
+ * УЧТЁНО (сводка достигнутого, детали — REPORT §21-22 и cterm/aurora):
+   root + SSH, Aurora 4.0.2.340, IMA off (boot-imaoff-v4.img, свои
+   бинарники/.so/скрипты исполняются), MTK preloader/DA-восстановление
+   (mtk_bridge7.py + mtkrun.sh, handshake OK), Go 1.22.12 + Fyne 2.4.4
+   собираются, Fyne-окно работает на lipstick (GLFW-патч wl_shell+touch),
+   GPU Mali-T720 (76.7 fps против 26.8 у llvmpipe), cterm (Fyne-терминал)
+   работает, OSK вынесена в pkg/fyneosk.

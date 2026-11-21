@@ -1,0 +1,63 @@
+#!/bin/sh
+# boot-mode — переключение режима проверки подписи (IMA) через два boot-образа.
+#
+#   boot-mode status   показать, что в boot и recovery и что в cmdline
+#   boot-mode dev      нормальная загрузка = IMA OFF (dev), recovery = IMA ON
+#   boot-mode secure   нормальная загрузка = IMA ON (production), recovery = IMA OFF
+#   boot-mode install  положить образы в /boot-modes (выполняется один раз)
+#
+# ВАЖНО: работает и при включённой проверке подписи — dd/sync берутся из busybox,
+# который подписан OMP (security.ima есть). Поэтому «выбраться» из secure-режима
+# всегда можно.
+set -e
+
+BN=/dev/block/platform/mtk-msdc.0/by-name
+DIR=/boot-modes
+IMAON="$DIR/boot-imaon.img"     # ima_appraise=enforce (production)
+IMAOFF="$DIR/boot-imaoff.img"   # ima_appraise=off     (dev)
+
+md5of() { busybox md5sum "$1" 2>/dev/null | cut -d' ' -f1; }
+partmd5() { busybox dd if="$1" bs=1M 2>/dev/null | busybox md5sum | cut -d' ' -f1; }
+
+write_part() {  # $1 = раздел, $2 = образ
+    [ -f "$2" ] || { echo "нет образа: $2" >&2; exit 1; }
+    echo "→ пишу $(basename "$2") в $1"
+    busybox dd if="$2" of="$BN/$1" bs=1M 2>&1 | busybox tail -1
+    busybox sync
+    echo "  md5: $(partmd5 "$BN/$1") (ожидалось $(md5of "$2"))"
+}
+
+case "$1" in
+  status)
+    echo "boot     md5: $(partmd5 "$BN/boot")"
+    echo "recovery md5: $(partmd5 "$BN/recovery")"
+    echo "образы:"
+    [ -f "$IMAON" ]  && echo "  IMA-ON  ($(md5of "$IMAON"))  $(basename "$IMAON")"
+    [ -f "$IMAOFF" ] && echo "  IMA-OFF ($(md5of "$IMAOFF")) $(basename "$IMAOFF")"
+    echo "сейчас в cmdline:"
+    busybox cat /proc/cmdline | busybox tr ' ' '\n' | busybox grep -E '^(ima_appraise|module.sig_enforce)' || true
+    ;;
+  install)
+    mkdir -p "$DIR"
+    echo "положите в $DIR файлы: boot-imaon.img и boot-imaoff.img"
+    ls -l "$DIR" 2>/dev/null || true
+    ;;
+  dev)
+    write_part boot     "$IMAOFF"
+    write_part recovery "$IMAON"
+    echo
+    echo "ГОТОВО: обычная загрузка = IMA OFF (dev)."
+    echo "Перезагрузка → при желании можно выбрать 'recovery' (будет IMA ON)."
+    ;;
+  secure)
+    write_part boot     "$IMAON"
+    write_part recovery "$IMAOFF"
+    echo
+    echo "ГОТОВО: обычная загрузка = IMA ENFORCE (production)."
+    echo "Если понадобится разработка — выберите в boot-меню 'recovery' (IMA OFF)."
+    ;;
+  *)
+    echo "usage: boot-mode {status|dev|secure|install}" >&2
+    exit 2
+    ;;
+esac
