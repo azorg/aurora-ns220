@@ -1,0 +1,50 @@
+--- /home/user/build/ns220-arm/go-fuse/splice/pair_linux.go	2026-11-23 02:05:32.755000223 +0300
++++ /home/user/go/pkg/mod/github.com/hanwen/go-fuse/v2@v2.12.1/splice/pair_linux.go	2026-11-17 18:42:28.973834354 +0300
+@@ -27,8 +27,9 @@
+ 	var err error
+ 	src.rConn.Control(func(rfd uintptr) {
+ 		p.wConn.Control(func(wfd uintptr) {
+-			sn, serr := syscall.Splice(int(rfd), nil, int(wfd), nil, sz, 0)
+-			n, err = int(sn), serr
++			var sn int64
++			sn, err = syscall.Splice(int(rfd), nil, int(wfd), nil, sz, 0)
++			n = int(sn)
+ 		})
+ 	})
+ 	if err != nil {
+@@ -41,8 +42,9 @@
+ 	var n int
+ 	var err error
+ 	p.wConn.Control(func(wfd uintptr) {
+-		sn, serr := syscall.Splice(int(fd), &off, int(wfd), nil, sz, 0)
+-		n, err = int(sn), serr
++		var sn int64
++		sn, err = syscall.Splice(int(fd), &off, int(wfd), nil, sz, 0)
++		n = int(sn)
+ 	})
+ 	return n, err
+ }
+@@ -56,8 +58,9 @@
+ 	var n int
+ 	var err error
+ 	p.wConn.Control(func(wfd uintptr) {
+-		sn, serr := syscall.Splice(int(fd), nil, int(wfd), nil, sz, 0)
+-		n, err = int(sn), serr
++		var sn int64
++		sn, err = syscall.Splice(int(fd), nil, int(wfd), nil, sz, 0)
++		n = int(sn)
+ 	})
+ 	if err != nil {
+ 		err = os.NewSyscallError("Splice load from", err)
+@@ -75,8 +78,9 @@
+ 	var m int
+ 	var err error
+ 	p.rConn.Control(func(rfd uintptr) {
+-		sm, serr := syscall.Splice(int(rfd), nil, int(fd), nil, n, flags)
+-		m, err = int(sm), serr
++		var sm int64
++		sm, err = syscall.Splice(int(rfd), nil, int(fd), nil, n, flags)
++		m = int(sm)
+ 	})
+ 	if err != nil {
+ 		err = os.NewSyscallError("Splice write", err)

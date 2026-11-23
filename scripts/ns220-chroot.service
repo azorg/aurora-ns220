@@ -1,0 +1,20 @@
+[Unit]
+Description=NS220 Debian chroot mounts (/home/aurora, proc/sys/dev/tmp)
+Documentation=file:///home/user/work/aurora-ns220/doc/17-CHROOT-STACK.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Только монтирования стенда. Сервисы запускают отдельные юниты:
+#   csshd-chroot.service (clear-ssh) и cnet-chroot.service (cnet).
+# «Всё в одном» (mount + csshd + cnet) — вручную: ns220-svc start
+# (тогда csshd-chroot/cnet-chroot включать НЕ нужно).
+ExecStart=/usr/local/bin/ns220-svc mount
+ExecStop=/usr/local/bin/ns220-svc umount
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

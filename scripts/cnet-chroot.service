@@ -1,0 +1,61 @@
+# File: "cnet-chroot.service"
+# Системный systemd-юнит: узел cnet ВНУТРИ Debian-chroot на Aurora OS
+# (планшет NS220). Аналог deploy/csshd-chroot.service из clear-ssh.
+#
+# Зачем отдельный юнит: на планшете cnet собран под Debian-chroot
+# (/home/chroot/debian: /usr/local/bin/cnet, профиль /etc/cnet/config/node.yaml,
+# store /var/lib/cnet/store), а в самом chroot нет init/systemd — запускать
+# узел некому. Этот юнит поднимает cnet на systemd ХОСТА, входя в chroot
+# обёрткой debian-chroot (она монтирует proc/sys/dev и делает remount exec
+# для /home, смонтированного на Aurora с noexec, а также bind /home/user
+# в /home/aurora).
+#
+# ВАЖНО (порядок и монтирования):
+#   * Если стенд поднимается юнитом-«монтировщиком» ns220-chroot.service
+#     (ExecStart=ns220-svc mount), он держит /proc,/sys,/dev,/tmp chroot и
+#     флаг /run/ns220-svc.active; debian-chroot в этом случае НЕ размонтирует
+#     общие точки при выходе, поэтому cnet-chroot и csshd-chroot могут
+#     работать одновременно.
+#   * RequiresMountsFor=/home/chroot/debian — без /home chroot недоступен.
+#   * Для iptun нужен /dev/net/tun внутри chroot (даёт bind /dev).
+#
+# Установка на планшете (root):
+#   install -m0644 deploy/cnet-chroot.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now cnet-chroot
+#   systemctl status cnet-chroot
+#   journalctl -u cnet-chroot -n 50
+#
+# Если используется «всё в одном» ns220-chroot.service (ns220-svc start
+# запускает csshd и cnet сам), этот юнит НЕ включайте — будет два узла
+# на один профиль (конфликт порта 8443, имени tun cnet0, консоли 2323).
+#
+# Проверка после запуска:
+#   chroot /home/chroot/debian /opt/ns220/status.sh    # или ns220-svc status
+#   ip -6 addr show cnet0                              # fd00:.../16
+#   printf '12345678\npeers\nexit\n' | nc 127.0.0.1 2323
+
+[Unit]
+Description=cnet node in Debian chroot (Aurora NS220)
+Documentation=file:///home/user/work/aurora-ns220/doc/17-CHROOT-STACK.md
+After=network-online.target ns220-chroot.service
+Wants=network-online.target
+RequiresMountsFor=/home/chroot/debian
+
+[Service]
+Type=simple
+# -D не нужен: cnet run работает в переднем плане (systemd Type=simple).
+# --iptun=on включает IPv6-туннель cnet0 (нужен root и /dev/net/tun).
+ExecStart=/usr/local/bin/debian-chroot /usr/local/bin/cnet run --role node --config /etc/cnet/config/node.yaml --iptun=on
+# SIGINT — штатное завершение cnet (см. cnet -h: "SIGINT (Ctrl+C) - terminate process").
+KillSignal=SIGINT
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=5
+# cnet пишет store/ключи/логи: не наследовать широкую маску.
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
+
+# EOF: "cnet-chroot.service"

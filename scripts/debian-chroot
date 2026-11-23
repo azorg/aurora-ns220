@@ -3,17 +3,33 @@
 #
 #   debian-chroot                  интерактивный shell
 #   debian-chroot apt update       выполнить команду в chroot
+#   debian-chroot -c 'uname -a'    выполнить команду через sh -c
 #
-# Требует root (mount bind). /home должен быть с exec (скрипт сам remount-ит).
-set -e
+# Требует root (mount --bind). /home в Aurora смонтирован noexec — скрипт
+# сам делает remount с exec (флаги /home меняются только на время сессии?
+# нет: remount остаётся, это осознанно для dev-стенда).
+#
+# Домашний каталог пользователя Aurora виден внутри chroot:
+#   /home/user            -> $R/home/aurora   (bind, доступ по /home/aurora)
+#   /run/media/user (SD)  -> $R/media/aurora  (bind, если есть)
+#   внутри chroot: /root/aurora -> /home/aurora (симлинк для удобства)
+#
+# Если стенд сервисов поднят (ns220-svc, флаг /run/ns220-svc.active),
+# монтирования уже сделаны — скрипт их не трогает и не размонтирует.
+set -eu
+
 R=${DEBIAN_ROOT:-/home/chroot/debian}
+FLAG=/run/ns220-svc.active
+AURORA_HOME=${AURORA_HOME:-/home/user}
+AURORA_MEDIA=${AURORA_MEDIA:-/run/media/user}
 
 [ -d "$R" ] || { echo "нет rootfs: $R" >&2; exit 1; }
 
-# Не root — входим через setuid-хелпер (без пароля); если его нет — через devel-su.
+# Не root — повторно запускаем себя через sudo без пароля (есть на стенде),
+# иначе через devel-su с паролем 1234.
 if [ "$(id -u)" != "0" ]; then
-    if [ -x /usr/local/bin/debian-enter ]; then
-        exec /usr/local/bin/debian-enter "$@"
+    if sudo -n true 2>/dev/null; then
+        exec sudo -n -- "$0" "$@"
     fi
     DEB_SU_PASS=${DEB_SU_PASS:-1234}
     export DEB_SU_PASS
@@ -22,36 +38,107 @@ fi
 
 # /home обычно noexec — иначе внутри ничего не запустится
 mount -o remount,exec /home 2>/dev/null || true
+# ВНИМАНИЕ: bind rootfs на себя ради suid делать нельзя — ядро перестаёт
+# разрешать /proc/self/exe, и csshd не запускает privsep-worker. /home в
+# Aurora смонтирован nosuid, поэтому sudo/passwd внутри chroot не работают;
+# root в chroot — отдельный вход cssh/ssh на порт 2222.
+
+# Что примонтировали мы (чтобы снять только это).
+OURS=
+remember() { OURS="$OURS $1"; }
 
 umount_all() {
-    for d in tmp dev/pts dev sys proc; do
-        mountpoint -q "$R/$d" 2>/dev/null && umount "$R/$d" 2>/dev/null || true
+    for d in $OURS; do
+        while mountpoint -q "$d" 2>/dev/null; do
+            umount "$d" 2>/dev/null || umount -l "$d" 2>/dev/null || break
+        done
     done
 }
 
 mount_one() {  # $1 = путь внутри системы (proc, sys, dev, dev/pts)
     [ -d "$R/$1" ] || mkdir -p "$R/$1"
     if ! mountpoint -q "$R/$1" 2>/dev/null; then
-        mount --bind "/$1" "$R/$1"
+        mount --bind "/$1" "$R/$1" && remember "$R/$1"
     fi
+}
+
+# bind каталога хоста внутрь chroot (идемпотентно)
+mount_dir() {  # $1 = источник на хосте, $2 = цель внутри chroot
+    [ -d "$1" ] || return 0
+    mkdir -p "$2"
+    if ! mountpoint -q "$2" 2>/dev/null; then
+        mount --bind "$1" "$2" && remember "$2"
+    fi
+}
+
+rmdir_if_empty() {  # не оставлять пустые каталоги после себя
+    [ -d "$1" ] && rmdir "$1" 2>/dev/null || true
+}
+
+mount_home() {
+    mount_dir "$AURORA_HOME" "$R/home/aurora"
+    # медиа: SD-карта и точки монтирования пользователя
+    mount_dir "$AURORA_MEDIA" "$R/media/aurora"
+    # удобный симлинк внутри chroot: /root/aurora -> /home/aurora
+    [ -L "$R/root/aurora" ] || ln -sfn /home/aurora "$R/root/aurora" 2>/dev/null || true
+    # и короткий путь /aurora -> /home/aurora
+    [ -L "$R/aurora" ] || ln -sfn /home/aurora "$R/aurora" 2>/dev/null || true
 }
 
 mount_one proc
 mount_one sys
 mount_one dev
 mount_one dev/pts
-
 if [ -d "$R/tmp" ] && ! mountpoint -q "$R/tmp" 2>/dev/null; then
-    mount -t tmpfs tmpfs "$R/tmp" 2>/dev/null || true
+    mount -t tmpfs tmpfs "$R/tmp" 2>/dev/null && remember "$R/tmp"
 fi
+mount_home
 
-# DNS
-cp /etc/resolv.conf "$R/etc/resolv.conf" 2>/dev/null || true
-grep -q "127.0.0.1" "$R/etc/hosts" 2>/dev/null || echo "127.0.0.1 localhost" > "$R/etc/hosts"
+    # DNS в chroot: публичные резолверы. В Aurora /etc/resolv.conf — это
+    # заглушка connman (nameserver ::1 и 127.0.0.1); из chroot она работает
+    # нестабильно и отдаёт в первую очередь AAAA, хотя IPv6-аплинка у
+    # планшета нет (IPv6 есть только в оверлее fd00::/16). Публичные
+    # резолверы + gai.conf с приоритетом IPv4 решают обе проблемы.
+    mkdir -p "$R/etc"
+    cat > "$R/etc/resolv.conf" <<'RESOLV'
+# cnet-стенд NS220 (Debian chroot): публичные DNS.
+# Причина: в Aurora resolv.conf — заглушка connman (::1/127.0.0.1),
+# из chroot она ненадёжна; IPv6-аплинка нет, IPv6 только в оверлее.
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+nameserver 9.9.9.9
+RESOLV
+    # Приоритет IPv4 в getaddrinfo (RFC 3484), иначе curl/apt/pi
+    # пробуют недоступный AAAA и ждут таймаут.
+    touch "$R/etc/gai.conf"
+    grep -q '^precedence ::ffff:0:0/96' "$R/etc/gai.conf" 2>/dev/null ||
+        printf 'precedence ::ffff:0:0/96  100\n' >> "$R/etc/gai.conf"
+    # hostname -> 127.0.0.1 один раз (иначе sudo ругается
+    # "unable to resolve host"): убрать прежние строки и добавить одну.
+    if [ -n "${HOSTNAME:-}" ]; then
+        grep -v "127.0.0.1[[:space:]]*${HOSTNAME}" "$R/etc/hosts" 2>/dev/null > "$R/etc/hosts.tmp" || true
+        [ -s "$R/etc/hosts.tmp" ] && mv "$R/etc/hosts.tmp" "$R/etc/hosts"
+        printf '127.0.0.1\t%s\n' "$HOSTNAME" >> "$R/etc/hosts"
+    fi
+
+# Если стенд сервисов держит монтирования — их не снимаем.
+if [ -f "$FLAG" ]; then
+    OURS=
+fi
 
 if [ $# -eq 0 ]; then
-    trap 'umount_all' EXIT INT TERM
-    exec chroot "$R" /bin/bash -l
+    set +e
+    chroot "$R" /bin/bash -l
+    rc=$?
+    set -e
 else
-    exec chroot "$R" "$@"
+    set +e
+    chroot "$R" "$@"
+    rc=$?
+    set -e
 fi
+
+umount_all
+rmdir_if_empty "$R/home/aurora"
+rmdir_if_empty "$R/media/aurora"
+exit $rc

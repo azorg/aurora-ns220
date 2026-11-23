@@ -50,6 +50,7 @@ aurora-ns220/
 | 14 | [14-HARDWARE-ACCELERATION.md](14-HARDWARE-ACCELERATION.md) | аппаратное ускорение: Mali-T720, libhybris, замеры, адаптер |
 | 15 | [15-PERIPHERALS.md](15-PERIPHERALS.md) | периферия из Go: звук, микрофон дБ, вибро, GPS, G-сенсор, кнопки, подсветка, сон, модем |
 | 16 | [16-FINDINGS-NS220.md](16-FINDINGS-NS220.md) | **сводка находок по железу**: кнопки (POWER/vol/BACK/UP=59/DOWN=60/HOME, Reset), подсветка, сон, сенсоры, GPS, SIM |
+| 17 | [17-CHROOT-STACK.md](17-CHROOT-STACK.md) | **chroot-стенд**: Node 22 + pi, ClearSSH :222, узел cnet node-ns220, /home/aurora, автозапуск ns220-chroot |
 
 ## Материалы (doc/ai/)
 

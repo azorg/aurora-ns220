@@ -16,12 +16,27 @@
 ## Устройство и система
 
 [x] Root-доступ: devel-su, ssh root@192.168.2.15, пароль 1234, PermitRootLogin yes — REPORT §4, doc 10
+[x] `sudo` БЕЗ пароля на планшете: /etc/sudoers.d/20-user-nopasswd (`user ALL=(ALL) NOPASSWD: ALL`), visudo чистый, `sudo -n id`=root — ChangeLog 2026.11.23
 [x] Обновление ОС 4.0.2.249 → 4.0.2.340 (Balakovo, 793 пакета), ядро 3.18.79 — REPORT §3
 [ ] Проверить наличие более новой поддерживаемой версии Aurora для NS220 (репо/сайт) и, при наличии, обновиться; ядро/adaptation — через OMP-репо — план 0002
 [x] Отключение проверки подписи исполняемых файлов (IMA): boot-imaoff-v4.img (cmdline: ima_appraise=off, module.sig_enforce=0); свои бинарники/скрипты/.so запускаются, Aurora работает — REPORT §19
 [x] IMA как опция при загрузке: scripts/boot-mode status|dev|secure|install — два образа в /boot-modes, dd через busybox (работает и в secure-режиме), recovery как второй канал; проверить на живом устройстве после каждого обновления — doc/10, план 0003
 [x] Восстановление окирпиченного устройства: MTK preloader/DA (CDC-pty bridge, handshake, mtkclient), проверено на реальном брике — REPORT §18, mtkrun.sh
 [x] Debian chroot развёрнут (Debian 12.15 armhf, bookworm): /home/chroot/debian, second-stage на устройстве, apt работает (sandbox+IPv4 фиксы), установлены mc/tmux/vim/htop/nmap/curl/ncdu; вход `debian-chroot`/`deb`, пункт меню «Debian (chroot)» (fingerterm). GUI внутри chroot недоступен — doc/11, packaging/debian-chroot
+[x] Debian chroot как рабочий стенд: Node.js 22.23.4 (linux-armv7l, /opt/node), pi 1.6.0 (npm -g, настройки с ПК в /root/.pi/agent), clear-ssh 0.0.22 root-установка (csshd :222, PAM, root-вход), автозапуск ns220-chroot.service + ns220-svc — doc/17, ChangeLog 2026.11.23
+[x] Домашний каталог Aurora в chroot: bind /home/user -> /home/aurora, /run/media/user -> /media/aurora, симлинки /aurora и /root/aurora (медиа/скриншоты/загрузки доступны из Debian) — doc/17 §17.1
+[x] Узел cnet node-ns220 в кластере: 0.1.28+8863876 (armv7), ID fd00:37a:b722:dbd2:f625:afc2:509e:978e, паспорт от epc-регистратора, dial node-de + freelab.su, выход по умолчанию через node-de, iptun cnet0 /16; peers node-de/node-freelab — doc/17 §17.5-17.6, ~/work/cnet/doc/test-cluster
+[x] Кросс-сборка для armv7: cnet (BUG 0052 в ~/work/cnet исправлен, commit 8863876a) и clear-ssh (патч go-fuse + patchelf) — scripts/build-armv7-chroot.sh, patches/go-fuse-2.12.1-splice-32bit.patch
+[x] Стенд на трёх systemd-юнитах: ns220-chroot (только монтирования), csshd-chroot (:2222), cnet-chroot (cnet --iptun=on); пример — ~/work/cnet/deploy/cnet-chroot.service (commit b6bf3ae9) — doc/17 §17.2
+[x] Пользователь user в chroot (uid/gid 100000, home /home/aurora, пароль 1234); вход `cssh/ssh -p 2222 user@...` — doc/17 §17.3
+[x] DNS/сеть в chroot: resolv.conf на публичные DNS + gai.conf (IPv4 first) + группа inet (GID 3003) для user/clearssh; ping-обёртка (root→uid 100000) — doc/17 §17.9
+[x] `/etc/hosts` (Aurora + chroot): все оверлейные node-* из ovl-hosts (12 записей), скрипт scripts/install-ovl-hosts.sh
+[x] cnet-прокси на 127.0.0.1:1080 (HTTP+SOCKS5, user:12345678) → выход node-de; проверено 95.181.161.53 и HyperQwen — doc/17 §17.5
+[x] pi: прокси 1080 через HTTP(S)_PROXY/ALL_PROXY, ключ HyperQwen, ответ модели qwen3.8-27b — doc/17 §17.10
+[x] Звук pi: attention-sound через aplay (alsa-utils, /dev/snd в chroot), beep.wav в /usr/local/share/pi/sounds — doc/17 §17.11
+[x] cnet iptun: разобрано и закрыто (BUG 0055 в ~/work/cnet, commit 44d58064) — iptun/ICMP/входящий TCP исправны, но на NS220 **не работает исходящий IPv6-TCP на уровне ядра MTK 3.18** (Dial tcp6 ::1 -> i/o timeout, tcp4 -> OK); обход — cnet-прокси 127.0.0.1:1080 — doc/17 §17.6.2
+[ ] Автозапуск стенда проверить после перезагрузки Aurora (три юнита enabled): mounts → csshd :2222, cnet peers, /home/aurora
+[ ] cnet на планшете: проверить смену выхода (next-proxy-url) на freelab/ny и работу через оверлей после перезагрузки Aurora (sanity раз в неделю)
 
 ## Go + Fyne (среда разработки)
 

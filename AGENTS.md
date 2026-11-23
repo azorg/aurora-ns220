@@ -74,11 +74,14 @@ aurora-ns220/
 | Serial | `INS220067941` |
 | ОС | Aurora 4.0.2.340 (Balakovo), ядро 3.18.79, LVM: `sailfish-root`→`/`, `sailfish-home`→`/home` |
 | Пользователь | `user` (uid 100000, `/home/user`), пароль `1234`; root-пароль `1234`, `PermitRootLogin yes` |
-| Доступ | USB RNDIS: хост `192.168.2.14`, планшет **`192.168.2.15`**; Wi-Fi `192.168.1.241` (может меняться) |
-| Root | `echo 1234 | devel-su sh -c '...'`; обёртки: `runroot <скрипт>`, `root_cmd.sh '<команда>'` |
+| Доступ | USB RNDIS: хост `192.168.2.14`, планшет **`192.168.2.15`** (ssh-логин `user`, пароль `1234`); Wi-Fi `192.168.1.241` (может меняться) |
+| Root | **`sudo` без пароля** (`/etc/sudoers.d/20-user-nopasswd`, `user ALL=(ALL) NOPASSWD: ALL`); резерв — `echo 1234 | devel-su sh -c '...'`; обёртки: `runroot <скрипт>`, `root_cmd.sh '<команда>'` |
 | IMA | **выключен**: `boot-imaoff-v4.img` (`ima_appraise=off`, `module.sig_enforce=0`), свои бинарники/скрипты/.so запускаются |
 | Brick-восстановление | MTK preloader/DA: `mtkrun.sh w <part> <image> --skipwdt` (CDC-pty bridge, handshake OK) |
 | ⚠️ /home | смонтирован **noexec** — toolchain держать в `/opt`/`/tmp` или `mount -o remount,exec /home` |
+| Chroot-стенд | Debian 12 armhf в `/home/chroot/debian`: Node 22.23.4 + **pi 1.6.0** (`/root/.pi/agent` — настройки с ПК; звук — `aplay`), **csshd :2222** (ClearSSH 0.0.22, вход `user` uid 100000 или `root`, пароль 1234), узел **cnet node-ns220** (`fd00:037a:b722:dbd2:f625:afc2:509e:978e`); юниты `ns220-chroot` (монтирования), `csshd-chroot`, `cnet-chroot` (doc/17) |
+| Chroot /home | домашний каталог Aurora виден внутри: `/home/aurora` (bind `/home/user`), `/media/aurora` (bind `/run/media/user`), симлинки `/aurora`, `/root/aurora`; cnet — выход по умолчанию через **node-de**, dial `node-de` + `freelab.su` |
+| Chroot сеть | DNS chroot — публичные 8.8.8.8/1.1.1.1 + `gai.conf` (IPv4 first); сеть не-root пользователям разрешена только через группу **inet (GID 3003)** — `user`/`clearssh` в ней; прокси cnet **127.0.0.1:1080** (HTTP+SOCKS5, user:12345678) → выход node-de; pi ходит через него (в т.ч. HyperQwen на node-bigpc) |
 
 ## Работы с устройством — правила
 

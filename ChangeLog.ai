@@ -1,3 +1,140 @@
+2026.11.23 [Вс] (модель AI-ассистент, pi) <AI/pi>
+ * BUG 0055 ЗАКРЫТ: на планшете не работает ИСХОДЯЩИЙ IPv6-TCP — это
+   ограничение ядра Aurora 4.0.2.340 (MTK 3.18.79), не cnet. Доказано
+   минимальным Go-тестом: Dial("tcp6","[::1]:3342") -> i/o timeout,
+   Dial("tcp4","127.0.0.1:3343") -> OK; счётчики IPv6-loopback:
+   ActiveOpens +1, PassiveOpens +0, AttemptFails +2, OutRsts +2.
+   ICMPv6 (включая оверлей) и входящий IPv6-TCP работают. Исключены
+   chroot, ip6tables (при -P INPUT ACCEPT то же), rpfilter, netns,
+   маршруты, чек-суммы (SYN-ACK приходит валидным), «не тот адрес»
+   (ручной fd00:9::1 тоже таймаутит). Отчёт —
+   ~/work/cnet/doc/ai/bugs/0055 (§12), commit 44d58064.
+   Добавлен раздел doc/17 §17.6.2 с выводом: не рассчитывать на прямой
+   IPv6-TCP из приложений, использовать cnet-прокси 127.0.0.1:1080
+   (проверено: внешние API и HyperQwen через него работают, pi настроен).
+   Правка пересчёта контрольных сумм в cnet (cc4c2eaf) оставлена как
+   страховка. Стенд и bigpc в норме.
+
+2026.11.23 [Вс] (модель AI-ассистент, pi) <AI/pi>
+ * УТОЧНЕНИЕ по iptun (исправлен неверный вывод в doc/17 §17.6.1):
+   туннель на ns220 РАБОТАЕТ в обе стороны — ICMPv6 (через обёртку
+   /usr/local/bin/ping от uid 100000): ns220->epc 2/2, ns220->bigpc 3/3
+   (0% потерь), bigpc->ns220 и epc->ns220 cnet-ping/ICMP проходят,
+   TCP epc->ns220:2222 соединяется. Не работает ТОЛЬКО TCP с node-bigpc
+   (все порты: 22/80/2222/18020, включая HyperQwen): SYN до bigpc доходит
+   (его cnet0 rx растёт), но SYN-RECV не появляется и ответа нет; TCP
+   ns220->epc при этом даёт SYN+RST. Найдено различие: кластер работает с
+   batchSize=128 (IFF_VNET_HDR/offload), ns220 (ядро MTK 3.18) —
+   batchSize=1. Подробности и план — BUG 0055 в ~/work/cnet
+   (commit db4121c5), там же ограничения доступа на bigpc.
+
+2026.11.23 [Вс] (модель AI-ассистент, pi) <AI/pi>
+ * ДОДЕЛАНО И ПРОВЕРЕНО на живом устройстве (продолжение записи выше):
+   - csshd переведён на порт **2222** (`/etc/cssh/csshd.yaml` ports [2222],
+     `permit-root-login: yes`), юнит `csshd-chroot.service` (из clear-ssh)
+     enabled+active; вход проверен: `ssh/cssh -p 2222 user@192.168.2.15`
+     и `... root@...`, PAM-аутентификация работает (в т.ч. после фикса
+     clear-ssh BUG 0155 — пересобран из HEAD, регрессий нет).
+   - в chroot заведён пользователь **user**: uid/gid 100000 (как в Aurora),
+     home `/home/aurora` (bind `/home/user`), пароль 1234, shell bash;
+     UID правили в /etc/passwd+group вручную (usermod сделал бы chown
+     домашнего каталога Aurora).
+   - DNS в chroot починен по-настоящему: (1) `/etc/resolv.conf` chroot —
+     публичные 8.8.8.8/1.1.1.1/9.9.9.9 вместо connman-заглушки
+     (::1/127.0.0.1) — пишется `ns220-svc`/`debian-chroot` при каждом
+     старте; (2) `/etc/gai.conf` — `precedence ::ffff:0:0/96 100`
+     (IPv6-аплинка нет, без этого curl/apt/pi ждали таймаут на AAAA);
+     (3) ГЛАВНАЯ ПРИЧИНА «не работает DNS у пользователя»: на Aurora
+     сеть разрешена только группе **inet (GID 3003)** — в Debian такой
+     группы не было, поэтому у uid≠0 не открывались даже TCP-сокеты
+     (`getent` пусто, curl 000, node EAI_AGAIN). Создана группа inet 3003,
+     `user` и `clearssh` добавлены; после этого у user работают DNS,
+     HTTP, pi.
+   - `ping` в chroot: под root Aurora запрещает ICMP-сокет
+     (`socket: Permission denied`, capabilities не помогают), под user
+     работает unprivileged ICMP. Добавлена обёртка
+     `/usr/local/bin/ping` (`scripts/ns220-chroot/ping-wrapper.sh`):
+     от root перезапускает ping от uid 100000/группы inet — работает в
+     обоих случаях. Для ya.ru нужен `-4` (AAAA + нет IPv6-аплинка).
+   - в `/etc/hosts` планшета и chroot внесены ВСЕ оверлейные адреса
+     node-* из `~/work/cnet/doc/test-cluster/ovl-hosts` (12 записей,
+     управляемый блок; скрипт `scripts/install-ovl-hosts.sh`).
+   - прокси cnet переведён на **127.0.0.1:1080** (HTTP+SOCKS5, auth
+     user:12345678), выход через node-de: проверено 95.181.161.53;
+     без пароля — отказ. Через него же доступен HyperQwen на node-bigpc
+     (`/v1/models` → 200).
+   - pi настроен: `/etc/profile.d/90-llm-proxy.sh` (HTTP(S)_PROXY/ALL_PROXY
+     на 127.0.0.1:1080, NO_PROXY — localhost/LAN; оверлей НЕ исключён,
+     поэтому HyperQwen идёт через прокси), ключ
+     `~/.config/opencode/hyperqwen.key`; проверено:
+     `pi -p ... --model qwen3.8-27b` отвечает (оверлей через node-de),
+     внешние провайдеры — через тот же прокси.
+   - ЗВУК pi: расширение attention-sound использует **aplay** (alsa-utils),
+     `/dev/snd` доступен из chroot (карта mt-snd-card); PulseAudio-сокет
+     хоста из chroot не работает (демон принимает только свой uid) —
+     `pulseaudio-utils` удалён, чтобы paplay не выбирался. Файл сигнала —
+     `/usr/local/share/pi/sounds/beep.wav` (читается uid 100000),
+     `PI_ATTENTION_SOUND` в `/etc/profile.d/91-audio.sh`. Проверено:
+     `[attention-sound] playing ... via aplay`, сигнал слышен.
+   - systemd-архитектура стенда переделана на три юнита:
+     `ns220-chroot.service` (только монтирования, `ns220-svc mount`),
+     `csshd-chroot.service` (ClearSSH :2222), `cnet-chroot.service`
+     (cnet run --iptun=on). Все три enabled+active, дубликатов процессов
+     нет. Пример юнита cnet сохранён в `~/work/cnet/deploy/cnet-chroot.service`
+     (commit/push b6bf3ae9), копия — `scripts/cnet-chroot.service`.
+   - iptun: cnet0 (fd00:037a:.../16) поднимается, входящий трафик через
+     туннель работает (epc → ns220:2222), исходящий пока нет (пакеты
+     ns220 не доходят до получателя, tcpdump на epc пуст) — для LLM
+     обойдено прокси; заведена заметка в doc/17 §17.6.1.
+   - обновлены `doc/17-CHROOT-STACK.md` (§17.2 юниты, §17.3 порт 2222,
+     §17.5 прокси/iptun, §17.9 сеть/DNS/inet/ping, §17.10 pi+HyperQwen,
+     §17.11 звук), `AGENTS.md` (факты стенда), `TODO.txt`.
+
+2026.11.23 [Вс] (модель AI-ассистент, pi) <AI/pi>
+ * НОВЫЙ ДОКУМЕНТ `doc/17-CHROOT-STACK.md`: Debian-chroot на NS220 как
+   постоянный стенд — Node.js 22.23.4 (linux-armv7l) + pi 1.6.0 с
+   настройками ПК, ClearSSH 0.0.22 (csshd :222, root-установка), узел
+   cnet node-ns220 (0.1.28+8863876, ID fd00:37a:b722:dbd2:f625:afc2:
+   509e:978e, выход через node-de, dial node-de+freelab), bind домашнего
+   каталога Aurora (`/home/aurora`, `/media/aurora`, симлинки `/aurora`,
+   `/root/aurora`), автозапуск `ns220-chroot.service` и `ns220-svc`.
+ * СКРИПТЫ В РЕПО: `scripts/ns220-chroot-svc.sh` (start/stop/status стенда),
+   `scripts/ns220-chroot.service`, `scripts/ns220-chroot/{start,stop,status}.sh`
+   (внутри chroot, /opt/ns220), `scripts/debian-chroot` (переписан: sudo
+   вместо setuid-хелпера, bind /home/user и /run/media/user, не трогает
+   монтирования работающего стенда), `scripts/build-armv7-chroot.sh`
+   (кросс-сборка cnet и clear-ssh для armv7).
+ * ПАТЧИ В РЕПО: `patches/go-fuse-2.12.1-splice-32bit.patch` — go-fuse
+   v2.12.1 не собирается на 32-битных (syscall.Splice возвращает int);
+   подключается через `-modfile`, go.mod clear-ssh не меняется.
+ * BUG 0052 в ~/work/cnet: на armv7/386 `flow.BufSizeDecode(255)` давал
+   -2147483648 (переполнение int32) — ломало оценку rxFree и могло
+   залипить отправителя при коде буфера 254/255 от соседа; плюс тесты
+   conn/frame и pkg/binarydata не собирались на 32-битах (константы
+   >2^31 в int). Исправлено (int64+насыщение на MaxTxRxBufSize, тесты
+   переносимы), регресс-тест `pkg/flow/flow_bufsize_portable_test.go`,
+   отчёт `doc/ai/bugs/0052.armv7-flow-bufsize-overflow.txt`;
+   commit/push 8863876a в github azorg/cnet, бинарь обновлён на планшете.
+   Проверено: `go vet` для GOARCH=arm по репозиторию чисто, тесты
+   pkg/flow/pkg/binarydata/conn/frame проходят на arm (qemu) и amd64.
+ * УЗЕЛ В КЛАСТЕРЕ: `doc/test-cluster/ovl-hosts` и `test-cluster.txt` в
+   ~/work/cnet дополнены node-ns220 (ID, паспорт, dial, прокси, iptun,
+   грабли включения нового узла); `/etc/hosts` планшета и chroot получили
+   строку `fd00:37a:...:978e node-ns220`.
+ * SUDO БЕЗ ПАРОЛЯ: `/etc/sudoers.d/20-user-nopasswd` (`user ALL=(ALL)
+   NOPASSWD: ALL`), visudo чистый, `sudo -n id` -> root.
+
+2026.11.23 [Вс] (модель AI-ассистент, pi) <AI/pi>
+ * SUDO БЕЗ ПАРОЛЯ на планшете: добавлен `/etc/sudoers.d/20-user-nopasswd`
+   (root:root 0440) с правилом `user ALL=(ALL) NOPASSWD: ALL`; `visudo -c`
+   чистый, проверено по ssh от user: `sudo -n id` -> uid=0(root).
+   До этого работал только `echo 1234 | devel-su` (в /etc/sudoers.d уже
+   были 01_keep_zypp_logfile и 10-user-su, правило `user ALL=(ALL) ALL` с
+   паролем; drop-in'ы активны через `#includedir /etc/sudoers.d` — в sudoers
+   директива пишется именно с `#`). Теперь `sudo` в скриптах устройства
+   используется без пароля; root_cmd.sh/runroot пока работают через devel-su
+   (пароль 1234) — альтернативный путь сохранён.
+
 2026.11.21 [Сб] (модель AI-ассистент, pi) <AI/pi>
  * ЗАПИСАНЫ ВСЕ НАХОДКИ: новый `doc/16-FINDINGS-NS220.md` — сводка по железу
    (кнопки, подсветка, сон, сенсоры, GPS, SIM, экран/ориентация, звук/вибро,
