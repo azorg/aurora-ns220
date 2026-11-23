@@ -1,0 +1,26 @@
+# File: "mnt-chroot.mount" — раздел microSD с Debian-chroot на NS220.
+#
+# Устанавливается как /etc/systemd/system/mnt-chroot.mount. Монтирует
+# ext4-раздел microSD, на котором живёт chroot (/mnt/chroot/debian), с
+# exec (для chroot это обязательно), без nosuid-ограничений /home и без
+# udisks-политики (та монтирует vfat-разделы с noexec).
+#
+# Имя юнита должно совпадать с точкой монтирования (systemd требование).
+# После переразметки/переформатирования microSD заменить UUID:
+#   blkid /dev/mmcblk1p1   ->  NS220_CHROOT_FS_UUID в /etc/ns220-chroot.conf
+[Unit]
+Description=microSD ext4 for NS220 Debian chroot (/mnt/chroot)
+Before=ns220-chroot.service
+# Не ждать udisks: устройство статическое
+After=local-fs-pre.target
+DefaultDependencies=no
+Conflicts=umount.target
+
+[Mount]
+What=/dev/disk/by-uuid/8f89560b-07c5-4287-b5a9-0ac16f7270c1
+Where=/mnt/chroot
+Type=ext4
+Options=rw,noatime,exec,dev,suid,discard
+
+[Install]
+WantedBy=local-fs.target

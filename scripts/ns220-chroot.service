@@ -1,8 +1,11 @@
 [Unit]
 Description=NS220 Debian chroot mounts (/home/aurora, proc/sys/dev/tmp)
 Documentation=file:///home/user/work/aurora-ns220/doc/17-CHROOT-STACK.md
-After=network-online.target
+After=network-online.target mnt-chroot.mount
 Wants=network-online.target
+# Корень chroot — /home/chroot/debian (симлинк на /mnt/chroot/debian,
+# раздел microSD). Без смонтированной карты стенд не стартует.
+RequiresMountsFor=/mnt/chroot
 
 [Service]
 Type=oneshot

@@ -1,3 +1,33 @@
+2026.11.23 [Пн] (модель AI-ассистент, pi) <AI/pi>
+ * Debian-chroot стенда NS220 переехал с eMMC на microSD 29.8 ГБ (причина:
+   /home был занят на 87 % — 1.1 ГБ свободно, / — на 96 %).
+   Схема: /dev/mmcblk1p1 ext4 26.4 ГБ (UUID 8f89560b-...) в /mnt/chroot,
+   корень chroot /mnt/chroot/debian, а /home/chroot/debian — симлинк на
+   него, поэтому ns220-svc, debian-chroot, csshd-chroot и cnet-chroot
+   работают без правок. Заводской FAT32-раздел (mmcblk1p2, 2.8 ГБ)
+   оставлен; vfat для chroot не годится (noexec/nosuid, нет прав и
+   симлинков) — в doc/17 §17.13 записано почему.
+ * Добавлен systemd-юнит scripts/mnt-chroot.mount (ext4, exec, discard,
+   local-fs.target) и зависимость от него: RequiresMountsFor=/mnt/chroot
+   в ns220-chroot.service, drop-in 20-sd-chroot.conf для csshd-chroot и
+   cnet-chroot. Без карты стенд не стартует — лучше явный отказ, чем
+   chroot на пустом каталоге (иначе после ребута сервисы ушли бы в
+   /home/chroot/debian, которого нет).
+ * ПРОВЕРЕНО ПЕРЕЗАГРУЗКОЙ: после systemctl reboot все четыре юнита
+   (mnt-chroot, ns220-chroot, csshd-chroot, cnet-chroot) активны, /mnt/chroot
+   смонтирован с опциями юнита (rw,noatime,discard,data=ordered), csshd
+   слушает :2222, cnet держит 2 peer'а, ICMP через оверлей до bigpc —
+   34 мс, SOCKS5 127.0.0.1:1080 -> node-de (95.181.161.53). Свободно:
+   /home — 3.3 ГБ (было 1.1), /mnt/chroot — 19.3 ГБ; / (rootfs) по-прежнему
+   96 % — переездом не лечится.
+ * Грабли (в §17.13): umount /mnt/chroot не проходит, пока под ним bind'ы
+   стенда (сначала ns220-svc umount); systemd «усыновляет» вручную
+   смонтированный раздел и показывает фактические опции, а не опции юнита.
+ * Документация: doc/17-CHROOT-STACK.md §17.13 (схема, воспроизводимый
+   рецепт rsync/переключения, проверка после ребута); заодно в §17.12
+   исправлен порт csshd 222 -> 2222. Изменения в рабочем дереве, НЕ
+   закоммичены (жду указания).
+
 2026.11.23 [Вс] (модель AI-ассистент, pi) <AI/pi>
  * BUG 0055 ЗАКРЫТ: на планшете не работает ИСХОДЯЩИЙ IPv6-TCP — это
    ограничение ядра Aurora 4.0.2.340 (MTK 3.18.79), не cnet. Доказано

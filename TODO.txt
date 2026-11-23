@@ -34,6 +34,7 @@
 [x] cnet-прокси на 127.0.0.1:1080 (HTTP+SOCKS5, user:12345678) → выход node-de; проверено 95.181.161.53 и HyperQwen — doc/17 §17.5
 [x] pi: прокси 1080 через HTTP(S)_PROXY/ALL_PROXY, ключ HyperQwen, ответ модели qwen3.8-27b — doc/17 §17.10
 [x] Звук pi: attention-sound через aplay (alsa-utils, /dev/snd в chroot), beep.wav в /usr/local/share/pi/sounds — doc/17 §17.11
+[x] Debian-chroot перенесён на microSD: ext4-раздел mmcblk1p1 (26.4 ГБ) в /mnt/chroot, корень /mnt/chroot/debian, /home/chroot/debian — симлинк; монтирование юнитом mnt-chroot.mount, проверено перезагрузкой (все 4 юнита, csshd :2222, cnet 2 peers); /home: 1.1 -> 3.3 ГБ свободно — doc/17 §17.13, ChangeLog 2026.11.23
 [x] cnet iptun: разобрано и закрыто (BUG 0055 в ~/work/cnet, commit 44d58064) — iptun/ICMP/входящий TCP исправны, но на NS220 **не работает исходящий IPv6-TCP на уровне ядра MTK 3.18** (Dial tcp6 ::1 -> i/o timeout, tcp4 -> OK); обход — cnet-прокси 127.0.0.1:1080 — doc/17 §17.6.2
 [ ] Автозапуск стенда проверить после перезагрузки Aurora (три юнита enabled): mounts → csshd :2222, cnet peers, /home/aurora
 [ ] cnet на планшете: проверить смену выхода (next-proxy-url) на freelab/ny и работу через оверлей после перезагрузки Aurora (sanity раз в неделю)

@@ -39,18 +39,19 @@ SSH-сервером ClearSSH и узлом оверлея cnet (`node-ns220`), 
 | `/media/aurora` | bind-монтирование `/run/media/user` (SD-карта и медиа) |
 | `/aurora`, `/root/aurora` | симлинки на `/home/aurora` |
 
-## 17.2. Управление стендом (systemd: три юнита)
+## 17.2. Управление стендом (systemd: четыре юнита)
 
-Стенд разделён на три юнита — по одному на слой:
+Стенд разделён на четыре юнита — по одному на слой:
 
 | Юнит | Что делает |
 |---|---|
+| `mnt-chroot.mount` | microSD с chroot: `/dev/disk/by-uuid/8f89560b-…` (ext4) → `/mnt/chroot`, `rw,noatime,exec,dev,suid,discard`; ставится в `local-fs.target`, см. 17.13 |
 | `ns220-chroot.service` | **только монтирования**: remount exec `/home`, bind `/proc /sys /dev /dev/pts`, tmpfs `/tmp`, bind `/home/user` → `/home/aurora`, `/run/media/user` → `/media/aurora`; ставит флаг `/run/ns220-svc.active` (`ExecStart=ns220-svc mount`) |
 | `csshd-chroot.service` | ClearSSH-сервер в chroot: `debian-chroot csshd -D -f /etc/cssh/csshd.yaml` (порт **2222**, см. 17.3) |
 | `cnet-chroot.service` | узел cnet в chroot: `debian-chroot cnet run --role node --config /etc/cnet/config/node.yaml --iptun=on` (17.5) |
 
 ```sh
-systemctl status  ns220-chroot csshd-chroot cnet-chroot
+systemctl status  mnt-chroot ns220-chroot csshd-chroot cnet-chroot
 sudo systemctl restart cnet-chroot        # перезапуск узла cnet
 sudo ns220-svc status                     # сводка: порт, peers, /home/aurora
 sudo ns220-svc start                      # «всё в одном» без systemd-юнитов
@@ -64,8 +65,17 @@ cnet-chroot могут работать одновременно, а вход в
 
 Пример юнита для cnet лежит в репозитории cnet:
 `deploy/cnet-chroot.service` (копия — `scripts/cnet-chroot.service`).
+Юнит `mnt-chroot.mount` — в репозитории: `scripts/mnt-chroot.mount`
+(установка: `install -m0644 scripts/mnt-chroot.mount /etc/systemd/system/`,
+`systemctl daemon-reload && systemctl enable mnt-chroot.mount`).
 
-## 17.3. ClearSSH (csshd, порт 222)
+Зависимости: `ns220-chroot.service` содержит `RequiresMountsFor=/mnt/chroot`
+(подтягивает `mnt-chroot.mount`), для `csshd-chroot`/`cnet-chroot` тот же
+`RequiresMountsFor` и `After=mnt-chroot.mount` добавлены drop-in'ом
+`/etc/systemd/system/<юнит>.service.d/20-sd-chroot.conf` (не в репозитории:
+юниты сторонних проектов не правим).
+
+## 17.3. ClearSSH (csshd, порт 2222)
 
 * Установка: официальный инсталлятор ClearSSH в режиме `root`,
   `PORT=2222`, `COMPONENTS=both`, `PROVIDER=gocrypto`,
@@ -282,12 +292,13 @@ chroot как есть.
   `[attention-sound] playing /usr/local/share/pi/sounds/beep.wav x2 via aplay`
   и сигнал слышен; `aplay` от root и от uid 100000 — OK.
 
+
 ## 17.12. Известные ограничения и что дальше
 
 * Нет systemd внутри chroot — сервисы держит `ns220-svc` на хосте.
   При перезагрузке планшета их поднимает `ns220-chroot.service`
   (проверено).
-* `csshd` в chroot — отдельный сервер (порт 222); он не связан с
+* `csshd` в chroot — отдельный сервер (порт **2222**); он не связан с
   Aurora SSH (порт 22).
 * Пароли стенда: root в chroot `1234`, sudo у `user` без пароля —
   всё это dev-стенд, наружу не выставлять.
@@ -295,3 +306,90 @@ chroot как есть.
   Debian `ripgrep`/`fd-find` установленными.
 * Проверить при обновлении Aurora: `debian-chroot` (перезапись при
   обновлении `dup340.sh`?) и `ns220-chroot.service` (systemd unit).
+
+## 17.13. Перенос chroot на microSD (2026.11.23)
+
+Причина: eMMC тесна — `/home` (8.4 ГБ) был занят на 87 % (свободно 1.1 ГБ),
+`/` (rootfs 2.3 ГБ) — на 96 % (89 МБ). Debian-chroot (2.6 ГБ) переехал на
+microSD 29.8 ГБ, чтобы освободить eMMC под сборки и кэши.
+
+### Итоговая схема (проверено перезагрузкой)
+
+| Что | Значение |
+|---|---|
+| Раздел chroot | `/dev/mmcblk1p1`, ext4, 26.4 ГБ, UUID `8f89560b-07c5-4287-b5a9-0ac16f7270c1` |
+| Точка монтирования | `/mnt/chroot` (юнит `mnt-chroot.mount`, опции `rw,noatime,exec,dev,suid,discard`) |
+| Корень chroot | `/mnt/chroot/debian` |
+| Совместимость | `/home/chroot/debian` — **симлинк** на `/mnt/chroot/debian`; все скрипты и юниты, которые знают старый путь, работают без правок |
+| Второй раздел | `mmcblk1p2` (FAT32, 2.8 ГБ, `6AFE-BEFA`) оставлен как был |
+
+Порядок загрузки: `local-fs.target` → `mnt-chroot.mount` → `ns220-chroot.service`
+(mount'ы стенда) → `csshd-chroot.service` / `cnet-chroot.service`. В
+`ns220-chroot.service` добавлен `RequiresMountsFor=/mnt/chroot`, для
+`csshd-chroot`/`cnet-chroot` — drop-in `20-sd-chroot.conf` с тем же
+`RequiresMountsFor` и `After=mnt-chroot.mount`: без карты стенд не стартует
+(лучше явный отказ, чем chroot на пустом каталоге).
+
+### Почему не vfat
+
+Заводской раздел microSD был FAT32: udisks монтировал его как
+`rw,noexec,nosuid,nodev`. На vfat нет ни прав/владельцев, ни симлинков, ни
+бита выполнения — Debian-chroot там физически не работает (dpkg/apt падают
+на симлинках, `chroot` — на правах). Поэтому карта переразмечена под ext4.
+
+### Как переносили (воспроизводимо)
+
+```sh
+# 1. разметка/формат (разрушительно для карты!)
+fdisk /dev/mmcblk1        # p1: тип 83, до конца; p2 (FAT32) не трогали
+mkfs.ext4 -L ext4-27gb /dev/mmcblk1p1
+# 2. копия chroot без bind-монтирований
+rsync -aHAX --numeric-ids \
+  --exclude=/proc/* --exclude=/sys/* --exclude=/dev/* --exclude=/tmp/* \
+  --exclude=/home/aurora/* --exclude=/media/aurora/* --exclude=/run/user/* \
+  /home/chroot/debian/ /mnt/chroot/debian/
+# 3. второй проход после остановки сервисов (журналы cnet/csshd не «в движении»)
+systemctl stop csshd-chroot cnet-chroot ns220-chroot; ns220-svc umount
+rsync -aHAX --numeric-ids --delete --exclude=... /home/chroot/debian/ /mnt/chroot/debian/
+# 4. переключение
+mv /home/chroot/debian /home/chroot/debian.old
+ln -s /mnt/chroot/debian /home/chroot/debian
+# 5. монтирование карты — юнитом, а не вручную (иначе после ребута стенд мёртв)
+install -m0644 scripts/mnt-chroot.mount /etc/systemd/system/
+systemctl daemon-reload; systemctl enable mnt-chroot.mount
+# 6. проверка и только потом удаление старого дерева (~2.6 ГБ)
+systemctl restart ns220-chroot csshd-chroot cnet-chroot
+rm -rf /home/chroot/debian.old
+```
+
+### Проверка после перезагрузки (обязательна)
+
+```sh
+findmnt -no TARGET,SOURCE,FSTYPE,OPTIONS /mnt/chroot   # ext4, есть exec и discard
+ls -l /home/chroot/debian                               # симлинк на /mnt/chroot/debian
+systemctl is-active mnt-chroot ns220-chroot csshd-chroot cnet-chroot
+sudo ns220-svc status                                   # csshd :2222, cnet 2 peers
+debian-chroot ping -6 -c1 fd00:8d00:7bc:6ce:292:6ae4:cdb6:77a5
+curl -x socks5h://user:12345678@127.0.0.1:1080 https://api.ipify.org   # node-de
+```
+
+Результат сеанса 2026.11.23: после `systemctl reboot` все четыре юнита
+поднялись сами, csshd слушает :2222, cnet держит 2 peer'а, ICMP через
+overlay и SOCKS5-прокси работают. Свободно: `/home` — 3.3 ГБ (было 1.1),
+`/mnt/chroot` — 19.3 ГБ.
+
+### Замечания и грабли
+
+* `umount /mnt/chroot` не проходит, пока под ним висят bind-монтирования
+  стенда (`proc`, `sys`, `dev`, `tmp`, `home/aurora`, `media/aurora`):
+  сначала `ns220-svc umount`, потом `systemctl stop` юнитов.
+* systemd «усыновляет» уже смонтированный раздел: если карта была
+  смонтирована вручную, `systemctl start mnt-chroot.mount` просто помечает
+  юнит active с *фактическими* опциями (`Options=` в `systemctl show`).
+  Настоящие опции юнита применяются только при монтировании с нуля (ребут).
+* `/` (rootfs) переездом **не лечится**: 89 МБ свободных там остаются —
+  чистить `/var/cache`, `/usr/share` и старые RPM отдельно.
+* microSD медленнее eMMC (запись ~3–10 МБ/с): сборки в chroot идут дольше;
+  `GOCACHE` лучше держать на eMMC (`/home/user/.cache`).
+* Карта — расходник: `store` cnet, ключи и конфиги `pi` живут в chroot,
+  т.е. на карте; критичное дублировать на eMMC.
